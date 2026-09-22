@@ -3,7 +3,7 @@
 Each milestone ends with something you can demo. Rough pace: one weekend each.
 Each phase has a plain-English write-up in [docs/](docs/).
 
-**Now:** M4 done. **Next:** M5, ship it: admin page, CI, deploy, load test.
+**Now:** M5 built; only the live deployment is left, and that needs a server you own. **Next:** deploy, then polish (see Later).
 
 ## ✅ M0: Plan
 - [x] Pick the project and a working name
@@ -72,16 +72,19 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 
 **Done when:** `docker compose up`, file one request, and watch it clean all four services. ✅
 
-## M5: Ship it
-- [ ] Minimal admin page (Thymeleaf): request list, per-connector status, retry button
-- [ ] Rate limiting on public endpoints (today anyone can trigger confirmation emails to any address)
-- [ ] Real secrets from environment variables; no dev defaults in production
-- [ ] Production timings: cooling-off in days, retries spread over hours
-- [ ] OpenAPI docs (springdoc)
-- [ ] GitHub Actions: build + all tests on every push
-- [ ] Deploy to a free or cheap host with a live demo URL
-- [ ] k6 load test; put the real numbers in the README
-- [ ] Architecture diagram, demo GIF, final resume bullet
+## 🟡 M5: Ship it · [docs/phase-5.md](docs/phase-5.md)
+- [x] Admin page (Thymeleaf): request list with deadlines and audit status, per-connector progress, full history, retry button, certificate link
+- [x] Rate limiting: per IP (`forgetme.filings-per-hour`) and 3 per email address per day
+- [x] `forgetme.allowed-email-domains` so a public demo can only email `example.com`
+- [x] `prod` profile with no default secrets: missing environment variables stop startup
+- [x] Production timings: cooling-off 24 h, retries 10/20/40/80 min, report deadline 2 h
+- [x] OpenAPI docs (springdoc) at `/swagger-ui.html`
+- [x] GitHub Actions: `./mvnw -B verify` on every push (Testcontainers included), badge in the README
+- [x] Deployment files: production compose, Caddy (automatic HTTPS), `.env.example`, server walkthrough
+- [x] k6 load test + measured numbers in the README
+- [x] Architecture diagram and CV bullet in the README
+- [ ] Deploy to a free or cheap host with a live demo URL *(needs a server: Oracle Always Free or ~$5/month VPS)*
+- [ ] Short demo recording (optional; the live URL may be enough)
 
 **Done when:** a stranger can open the link, run the demo and understand the README without asking you anything.
 
@@ -95,6 +98,8 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - Signed PDF certificate for people who need a document to file
 - Starter support for long-running deletions (answer 202 first, report when done)
 - Extract the signing code into a small shared protocol module if a third component needs it
+- Move rate-limit counters to Redis when more than one instance runs
+- Actuator + Grafana dashboard if trends over time become useful
 - Deadline alerts to Slack or a pager, not just email
 - Kafka as an alternative to HTTP for connectors
 
@@ -113,3 +118,5 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - 2026-09-22: M3 built. HMAC hash-chained audit log with an append-only trigger and a verify endpoint; certificates anchored by the latest audit hash; email erased on every final state (not just `COMPLETED`); deadline alerts emailed to the admin. `code-secret` renamed to `hash-secret`, now used for all keyed fingerprints. 19 tests pass.
 - 2026-09-22: M3 pushed to GitHub.
 - 2026-09-22: M4 built. Connector starter, four-role demo app, Dockerfile, Compose `demo` profile with scripted registration, optional connector secrets. 25 tests pass (21 orchestrator + 4 starter). Full demo run: 48 s from confirmation to certificate.
+- 2026-09-22: M4 pushed to GitHub.
+- 2026-09-22: M5 built. Admin page, rate limits, allowed email domains, `prod` profile, springdoc, GitHub Actions, deployment files (Caddy + compose), k6 load test. 29 tests pass. Measured: 200 file-and-verify journeys in 3.0 s (p95 582 ms), then all 200 fanned out across 4 connectors in 30 s (~400/min, 800 jobs, 2,200 audit events). Live deployment still pending a server.

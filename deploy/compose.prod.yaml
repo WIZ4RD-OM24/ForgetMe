@@ -1,0 +1,52 @@
+# Production overrides. Use together with the main file:
+#   docker compose -f compose.yaml -f deploy/compose.prod.yaml --profile demo up -d --build
+# Settings come from deploy/.env (see .env.example). Nothing is exposed except through Caddy, which gets HTTPS
+# certificates automatically for $DOMAIN.
+
+services:
+  postgres:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    restart: unless-stopped
+
+  mailpit:
+    ports: !reset []
+    environment:
+      MP_WEBROOT: mail # so it can live at https://$DOMAIN/mail
+    restart: unless-stopped
+
+  orchestrator:
+    ports: !reset []
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/forgetme
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_MAIL_HOST: mailpit
+      SERVER_FORWARD_HEADERS_STRATEGY: framework # trust Caddy's X-Forwarded-* headers
+      FORGETME_BASEURL: https://${DOMAIN:?set DOMAIN in deploy/.env}
+      FORGETME_ENCRYPTION_KEY: ${FORGETME_ENCRYPTION_KEY:?generate one, see .env.example}
+      FORGETME_HASH_SECRET: ${FORGETME_HASH_SECRET:?generate one, see .env.example}
+      FORGETME_ADMIN_PASSWORD: ${FORGETME_ADMIN_PASSWORD:?choose one}
+      FORGETME_ALLOWEDEMAILDOMAINS: example.com # a public demo must not email real people
+    restart: unless-stopped
+
+  mailing: { ports: !reset [], restart: unless-stopped }
+  orders: { ports: !reset [], restart: unless-stopped }
+  uploads: { ports: !reset [], restart: unless-stopped }
+  users: { ports: !reset [], restart: unless-stopped }
+
+  caddy:
+    profiles: [demo]
+    image: caddy:2
+    depends_on: [orchestrator]
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    restart: unless-stopped
+
+volumes:
+  caddy_data:

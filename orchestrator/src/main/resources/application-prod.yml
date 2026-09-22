@@ -1,0 +1,17 @@
+# Production settings: no secret has a default here, so the app refuses to start unless it is given one.
+# Switch on with SPRING_PROFILES_ACTIVE=prod.
+spring:
+  security:
+    user:
+      password: ${FORGETME_ADMIN_PASSWORD}
+
+forgetme:
+  encryption-key: ${FORGETME_ENCRYPTION_KEY}
+  hash-secret: ${FORGETME_HASH_SECRET}
+  base-url: ${FORGETME_BASEURL}
+  admin-email: ${FORGETME_ADMIN_EMAIL:admin@forgetme.local}
+  cooling-off: PT24H     # a full day to change your mind
+  retry-backoff: PT10M   # 10m, 20m, 40m, 80m: retries spread over hours, not minutes
+  callback-timeout: PT2H # a slow system has two hours to report back before we send again
+  tick: PT30S
+  filings-per-hour: 5

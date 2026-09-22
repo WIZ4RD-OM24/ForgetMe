@@ -1,14 +1,16 @@
 # ForgetMe
 
+[![build](https://github.com/WIZ4RD-OM24/ForgetMe/actions/workflows/ci.yml/badge.svg)](https://github.com/WIZ4RD-OM24/ForgetMe/actions/workflows/ci.yml)
+
 > One request in, every system cleaned, proof out.
 
 A self-hosted orchestrator for "delete my data" requests (GDPR Art. 17, India's DPDP Act, CCPA), built with Spring Boot.
 
-**Status:** 🟡 Milestones 1–4 done (25/25 tests passing, full demo run end to end). Requests are verified, fanned out to every registered system stage by stage with signed messages and retries, recorded in a tamper-evident audit log, and closed with a certificate. A Spring Boot starter turns any app into a connector, and one command runs a four-service demo company. Shipping (CI, deploy, admin page) comes in M5. See [ROADMAP.md](ROADMAP.md).
+**Status:** 🟡 Milestones 1–5 done (29/29 tests passing, demo and load test run end to end); only the live deployment is left, and it needs a server. Requests are verified, fanned out to every registered system stage by stage with signed messages and retries, recorded in a tamper-evident audit log, and closed with a certificate. A Spring Boot starter turns any app into a connector, one command runs a four-service demo company, and there's an admin page, rate limiting, a prod profile, OpenAPI docs and CI. See [ROADMAP.md](ROADMAP.md).
 
 **Try it in one command:** `docker compose --profile demo up --build`, then [delete Alice](#option-a-the-full-demo-one-command).
 
-New here or not a developer? Start with [for-you.md](for-you.md). How each phase works, in plain words: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md) · [phase 4](docs/phase-4.md).
+New here or not a developer? Start with [for-you.md](for-you.md). How each phase works, in plain words: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md) · [phase 4](docs/phase-4.md) · [phase 5](docs/phase-5.md).
 
 ---
 
@@ -31,6 +33,8 @@ Small teams handle this with a spreadsheet and hand-written SQL. Things get miss
 - ✅ **Warns the admin** by email at 7 days before the legal deadline, and again if it's missed
 - ✅ Ships a **Spring Boot starter** that turns any service into a connector in about 5 lines
 - ✅ Comes with a **demo company** (mailing list, orders, uploads, user accounts) that runs with one command
+- ✅ Has an **admin page** (`/admin`): every request, each system's progress, the full history, a retry button
+- ✅ **Rate-limits** public endpoints per IP and per subject, and can restrict which email domains it accepts
 
 ## How it works
 
@@ -129,6 +133,26 @@ hash = HMAC-SHA256(hash-secret, "audit" ‖ prev_hash ‖ request_id ‖ event �
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    subject([Requester]) -->|"file / verify / cancel"| api
+    admin([Admin]) -->|"/admin, certificate, audit verify"| api
+    subgraph ForgetMe
+      api[REST API + admin page] --> db[(PostgreSQL<br/>requests · tasks · audit chain)]
+      disp[Dispatcher timer] --> db
+      watch[Deadline watcher] --> db
+    end
+    disp -->|"signed job"| c1[mailing · stage 1]
+    disp -->|"signed job"| c2[orders · stage 2]
+    disp -->|"signed job"| c3[uploads · stage 2]
+    disp -->|"signed job"| c4[users · stage 3]
+    c1 & c2 & c3 & c4 -->|"signed report"| api
+    api -->|"codes"| mail[SMTP / Mailpit]
+    watch -->|"deadline alerts"| mail
+```
+
+Each connector is an ordinary app with the starter added. Everything between ForgetMe and the connectors is HMAC-signed.
+
 ```
 forgetme/
 ├── compose.yaml                   Postgres + Mailpit; add --profile demo for the whole demo
@@ -182,6 +206,11 @@ One Maven multi-module build: `orchestrator`, `forgetme-spring-boot-starter`, `d
 | Audit log | HMAC-SHA256 hash chain, Postgres advisory lock for appends, append-only trigger |
 | Email (dev) | Mailpit catches outgoing mail locally |
 | Connector library | Spring Boot auto-configuration, JDK `HttpClient`, virtual threads |
+| Admin UI | Thymeleaf, ~25 lines of CSS, separate filter chain with CSRF |
+| API docs | springdoc OpenAPI at `/swagger-ui.html` |
+| CI | GitHub Actions: `./mvnw -B verify` on every push |
+| Production | `prod` profile (no default secrets), Caddy for automatic HTTPS |
+| Load testing | k6 (`loadtest/file-and-verify.js`) |
 | Tests | JUnit 5, Testcontainers, fake connectors on the JDK's built-in `HttpServer` |
 | Build | Maven wrapper (`mvnw`); multi-stage `Dockerfile` with a Maven cache mount |
 | Demo | Docker Compose `demo` profile: orchestrator + 4 services + one-shot setup |
@@ -272,6 +301,10 @@ Handlers must be idempotent: jobs are delivered at least once. If your app uses 
 | Signing code duplicated in the starter, pinned by a shared known-answer test | The starter stays dependency-free of the orchestrator; the test catches drift | A third component needs it (extract a protocol module) |
 | Connectors may bring their own secret | Scripted setup (the demo, infrastructure-as-code); generated is still the default | Never |
 | One demo app, four Spring profiles, in-memory data | One small class per system; the demo exists to show ForgetMe, not storage (MinIO dropped) | Never |
+| Separate security filter chain for `/admin/**` | Browser forms need CSRF protection and a session; the stateless JSON API neither needs nor wants them | Never |
+| Rate limits counted in memory, per IP | No extra infrastructure; each instance counts on its own | Running several instances (move to Redis) |
+| A per-subject limit as well as per-IP | The IP limit alone doesn't stop a botnet filling one person's inbox with confirmation codes | Never |
+| `prod` profile has no default secrets | A missing environment variable must stop startup, not silently fall back to a value published in this repo | Never |
 
 ## Security
 
@@ -281,9 +314,10 @@ Handlers must be idempotent: jobs are delivered at least once. If your app uses 
 - Every orchestrator ↔ connector message is HMAC-SHA256 signed over timestamp + body with a per-connector secret. Messages older than 5 minutes are rejected; a repeat inside that window is harmless because duplicate reports are ignored
 - API responses never include the email address
 - Request IDs are random UUIDs; everything except file/verify/cancel and signed callbacks requires admin login
-- Coming: rate limiting (M5)
+- Public endpoints are rate-limited: `forgetme.filings-per-hour` per IP (20 dev, 5 prod) and 3 per email address per day. `forgetme.allowed-email-domains` restricts who can be emailed at all — the public demo only accepts `example.com`
+- The admin page runs on its own filter chain with CSRF protection
 
-**Known gaps (until M5):** the public endpoint has no rate limit, so it could be used to send confirmation emails to arbitrary addresses. Connector URLs are admin-entered and not restricted, so an admin could point one at an internal address. The demo's connector secrets are written in `compose.yaml` and labelled demo-only. Secrets have dev defaults in `application.yml` and must be overridden with `FORGETME_ENCRYPTION_KEY`, `FORGETME_HASH_SECRET` and `FORGETME_ADMIN_PASSWORD` before deploying.
+**Known gaps:** connector URLs are admin-entered and not restricted, so an admin could point one at an internal address. The demo's connector secrets are written in `compose.yaml` and labelled demo-only. Development secrets in `application.yml` are placeholders; the `prod` profile has no defaults and refuses to start without `FORGETME_ENCRYPTION_KEY`, `FORGETME_HASH_SECRET` and `FORGETME_ADMIN_PASSWORD`.
 
 ## Getting started
 
@@ -314,6 +348,8 @@ curl -s -u admin:admin localhost:8080/api/requests/<id>/certificate
 ```
 
 Measured on a laptop: done in 48 s (20 s cooling-off, one deliberate retry on mailing, three stages), certificate complete, audit chain intact.
+
+The admin page is at **http://localhost:8080/admin** (`admin` / `admin` locally) and the API docs at **http://localhost:8080/swagger-ui.html**.
 
 ### Option B: develop ForgetMe itself
 
@@ -351,11 +387,38 @@ Run the tests:
 ```
 This runs all three modules' tests. The orchestrator's end-to-end tests (`RequestFlowTest`) start a throwaway Postgres in Docker and are skipped automatically when Docker isn't running.
 
+## Performance
+
+Measured with [k6](loadtest/file-and-verify.js) on one laptop, everything (orchestrator, Postgres, four connectors) in Docker on the same machine. Method and how to repeat it: [phase 5](docs/phase-5.md#the-numbers-measured-not-guessed).
+
+| | |
+|---|---|
+| 200 end-to-end journeys (file → read emailed code → confirm), 20 concurrent | **3.0 s**, 0 failures |
+| Throughput | ~199 HTTP req/s, ~66 complete journeys/s |
+| Filing p95 / confirming p95 | **582 ms** / **224 ms** |
+| Those 200 requests fanned out and completed across 4 connectors | **30 s** (~400 requests/min, 800 connector jobs) |
+| Audit events written, chain verified | 2,200, intact |
+
+## Deploying
+
+`deploy/` holds a production compose file, a Caddy config (automatic HTTPS, no other port exposed) and a secrets template. On any Linux server with Docker:
+
+```bash
+cp deploy/.env.example deploy/.env    # fill in DOMAIN + secrets (openssl rand -base64 32)
+docker compose --env-file deploy/.env -f compose.yaml -f deploy/compose.prod.yaml --profile demo up -d --build
+```
+
+The `prod` profile refuses to start without real secrets, waits a day before deleting, spreads retries over hours, and accepts only `example.com` addresses so a public demo can never email a real person. Full walkthrough, including getting a free server and an HTTPS name without buying a domain: [phase 5](docs/phase-5.md#putting-it-on-a-server-your-step).
+
 ## Non-goals
 
 - Legal advice or compliance certification
 - Discovering where personal data lives (you register connectors; ForgetMe doesn't scan)
 - A rich frontend (a minimal admin page only)
+
+## For a CV
+
+> Built **ForgetMe**, a self-hosted GDPR/DPDP erasure orchestrator (Java 21, Spring Boot 4, PostgreSQL): verifies the requester, fans a deletion out to every registered system in stages over HMAC-signed HTTP, retries with backoff and escalates to a human, then issues a certificate backed by an HMAC hash-chained, append-only audit log. Job queue is a Postgres table claimed with `FOR UPDATE SKIP LOCKED` and a lease, so no lock is held across network calls. Ships a Spring Boot starter that turns any service into a connector in ~5 lines, plus a one-command four-service demo. Measured 66 verified requests/s and ~400 fully fanned-out deletions/min on a laptop; 29 tests on CI.
 
 ## Prior art
 

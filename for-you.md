@@ -1,19 +1,20 @@
 # ForgetMe, explained simply
 
 *This file explains the project in plain English. It's updated every time the project changes.*
-*For how each step works in detail (the code, the tools, the reasons), see the phase guides: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md) · [phase 4](docs/phase-4.md).*
+*For how each step works in detail (the code, the tools, the reasons), see the phase guides: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md) · [phase 4](docs/phase-4.md) · [phase 5](docs/phase-5.md).*
 
 ## Where we are right now
 
-**Steps 1 to 4 of 5 are done.**
+**All 5 steps are built.** The only thing left is putting it online, which needs a server you rent or sign up for.
 - **Step 1:** someone can ask to be deleted and prove it's them with an emailed code. *(Tried by hand ✅)*
 - **Step 2:** once confirmed, ForgetMe contacts every part of the company that holds their data, in the right order, keeps retrying the ones that fail, and finishes when everyone has reported back.
 - **Step 3:** every step is written in a diary nobody can secretly edit; a finished request gets a receipt (certificate); ForgetMe forgets the email once a request is over; the admin is emailed when a deadline gets close.
 - **Step 4:** a plug-in lets any app join ForgetMe with about 5 lines, and **one command** starts a pretend company of four systems. We deleted "Alice" from all four in 48 seconds.
+- **Step 5:** an admin web page, limits that stop misuse, separate production settings, API documentation, automatic testing on GitHub, and everything needed to put it on a server.
 
-**All 25 automatic checks pass.**
+**All 29 automatic checks pass.**
 **The code is on GitHub** at https://github.com/WIZ4RD-OM24/ForgetMe. It's private for now, so only you can see it. Make it public when you want to show it on your resume.
-**Next:** Step 5, ship it: a simple admin web page, automatic testing on GitHub, putting it online, and measuring how much traffic it can handle.
+**Next:** put it online. You'll need a server (free on Oracle Cloud, or about $5 a month elsewhere). The steps are in the [phase 5 guide](docs/phase-5.md#putting-it-on-a-server-your-step), and I can walk you through them.
 
 ---
 
@@ -68,6 +69,26 @@ ForgetMe is that **moving-out helper**, but for a company's computer systems. A 
   - **user accounts**, which are deleted last
 - **One command starts it all**, inside Docker: ForgetMe, the four systems, the database and the fake inbox. Then you ask to delete Alice and watch her disappear from each system in the right order, while Bob stays.
 
+### Step 5: "Make it real"
+- **An admin web page** at `/admin`: every request, how many days are left before the legal deadline, what each system did, the full history, and a **retry** button. No personal details are shown, only request IDs.
+- **Limits that stop misuse:** one internet address can only file so many requests an hour, and one email address can only be targeted 3 times a day, so nobody can use ForgetMe to flood someone's inbox.
+- **Production settings:** a separate mode where nothing has a default password or key. If a secret is missing, the app refuses to start rather than quietly using a public one. Waiting times become realistic too: a day to change your mind, retries spread over hours.
+- **API documentation** at `/swagger-ui.html`, written automatically from the code.
+- **Automatic testing:** every time code is uploaded to GitHub, all the tests run there too, and the README shows a green tick.
+- **Ready for a server:** the files needed to run it online with automatic HTTPS (the padlock in the browser).
+- **Real measured numbers** (see below) instead of guesses.
+
+### How fast is it?
+
+Measured on this laptop, with everything running in Docker:
+
+| Test | Result |
+|---|---|
+| 200 people asking to be deleted and confirming by code, 20 at a time | **3 seconds**, nothing failed |
+| Waiting time for the person: filing / confirming | under 0.6 s / 0.3 s for 95% of them |
+| Those 200 people fully deleted from all 4 systems | **30 seconds** (about 400 people a minute) |
+| Diary entries written, all checked and intact | 2,200 |
+
 ### Why the order matters
 
 The main customer account is like **your contact list**. It holds the email, phone number and IDs that the other parts need to find the right data. Delete the contact list first and you can't reach anyone else. So:
@@ -86,7 +107,7 @@ The main customer account is like **your contact list**. It holds the email, pho
 | 2 ✅ | ForgetMe contacts every part of the company in order, and keeps retrying the ones that fail |
 | 3 ✅ | A receipt at the end, a tamper-proof diary, and warnings when a deadline is close |
 | 4 ✅ | A pretend company (4 tiny apps) to demo on, plus a plug-in so other programmers can connect their apps in 5 lines |
-| 5 | It's live on the internet, tested, with a simple admin page and a short demo video |
+| 5 ✅ | A simple admin page, testing on GitHub, real speed numbers, and everything ready to go online |
 
 ## Try it yourself
 
@@ -100,7 +121,7 @@ docker compose down -v
 ```powershell
 docker compose --profile demo up --build
 ```
-Then ask to delete alice@example.com and watch her disappear from the four systems.
+Then ask to delete alice@example.com and watch her disappear from the four systems. While it runs, open **http://localhost:8080/admin** (username `admin`, password `admin`) to watch it from the admin page.
 
 **Or run just ForgetMe** (in PowerShell, inside the project folder):
 ```powershell
@@ -162,6 +183,13 @@ To run the automatic checks:
 | Auto-configuration | Spring Boot noticing the plug-in and switching it on by itself |
 | Profile | A named setting that changes how an app behaves. Our demo app is one program that plays four different systems depending on its profile |
 | At-least-once | A job may arrive more than once, but never zero times. That's why deleting something already gone must count as success |
+| Rate limit | A cap on how often someone can do something, to stop misuse |
+| CSRF | A trick where another website makes your browser press a button on a site you're logged into. The admin page is protected against it |
+| Thymeleaf | The tool that turns our data into the admin web pages |
+| OpenAPI / Swagger | An automatically written list of everything the app's "doors" accept |
+| Caddy | A small web server that sits in front and gets the HTTPS padlock automatically |
+| HTTPS | The padlock in the browser: nobody in between can read what's sent |
+| k6 | The tool that floods the app with fake traffic to measure its speed |
 | WSL | Lets Windows run Linux in the background; Docker needs it |
 | Mailpit | A fake inbox on your computer that catches test emails so none are really sent |
 | Testcontainers | Starts a real, throwaway database just for the tests |
@@ -179,3 +207,6 @@ Good interview stories so far (each phase guide has a short list you can use):
 - how two simultaneous replies could have left a request stuck forever, and the lock that prevents it
 - how the diary catches tampering even by someone with full database access, and why the times had to be cut to microseconds to avoid false alarms
 - building a plug-in that other teams can adopt with one dependency and 5 lines, and a one-command demo anyone can run
+- measuring it honestly: 66 confirmed requests a second, and about 400 people fully deleted from four systems per minute
+
+There's a ready-made CV line in the [README](README.md#for-a-cv) you can copy once it's online.

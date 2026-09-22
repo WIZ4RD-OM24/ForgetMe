@@ -53,7 +53,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "forgetme.cooling-off=PT0S", "forgetme.retry-backoff=PT0S", "forgetme.callback-timeout=PT0S",
-        "forgetme.tick=PT1H"})
+        "forgetme.tick=PT1H", "forgetme.filings-per-hour=1000"}) // the per-IP limit has its own unit test
 @Testcontainers(disabledWithoutDocker = true)
 class RequestFlowTest {
 
@@ -260,6 +260,28 @@ class RequestFlowTest {
         assertEquals(400, call(POST, "/connectors", weak, true).getStatusCode().value(), "short secrets are refused");
     }
 
+    @Test
+    void oneAddressCantBeFloodedWithRequests() {
+        for (int i = 0; i < RequestService.MAX_PER_EMAIL_PER_DAY; i++) {
+            assertEquals(201, call(POST, "/requests", Map.of("email", "target@example.com"), false).getStatusCode().value());
+        }
+        assertEquals(429, call(POST, "/requests", Map.of("email", "TARGET@example.com"), false).getStatusCode().value(),
+                "same address, whatever the capitals");
+        assertEquals(201, call(POST, "/requests", Map.of("email", "someone-else@example.com"), false).getStatusCode().value());
+    }
+
+    @Test
+    void adminPageListsRequestsAndIsPrivate() {
+        String id = fileAndVerify("nina@example.com");
+        assertEquals(401, page("/admin", false).getStatusCode().value());
+
+        ResponseEntity<String> list = page("/admin", true);
+        assertEquals(200, list.getStatusCode().value());
+        assertTrue(list.getBody().contains(id.substring(0, 8)), "the request is listed");
+        assertTrue(list.getBody().contains("Audit log intact"));
+        assertTrue(page("/admin/requests/" + id, true).getBody().contains("WAITING"));
+    }
+
     // ---- Phase 3: proof and deadlines ----
 
     @Test
@@ -386,6 +408,13 @@ class RequestFlowTest {
         if (asAdmin) spec.headers(h -> h.setBasicAuth("admin", "admin"));
         if (body != null) spec.contentType(MediaType.APPLICATION_JSON).body(body);
         return spec.retrieve().toEntity(Map.class);
+    }
+
+    /** The admin pages live outside /api, so these go to the server root. */
+    private ResponseEntity<String> page(String path, boolean asAdmin) {
+        return http.get().uri("http://localhost:" + port + path)
+                .headers(h -> { if (asAdmin) h.setBasicAuth("admin", "admin"); })
+                .retrieve().toEntity(String.class);
     }
 
     private ResponseEntity<Map> verifyCode(String id, String code) {

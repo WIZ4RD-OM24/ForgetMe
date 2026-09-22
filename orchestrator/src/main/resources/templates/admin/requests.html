@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ForgetMe admin</title>
+    <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+<h1>ForgetMe</h1>
+<p class="sub">
+    Deletion requests, newest first.
+    <span th:if="${audit.intact()}">Audit log intact, <span th:text="${audit.eventsChecked()}">0</span> events.</span>
+    <span class="tag OVERDUE" th:unless="${audit.intact()}">
+        Audit log broken at event <span th:text="${audit.firstBrokenEventId()}">0</span>
+    </span>
+</p>
+
+<table>
+    <tr><th>Request</th><th>Status</th><th>Received</th><th>Deadline</th></tr>
+    <tr th:each="row : ${rows}">
+        <td><a th:href="@{/admin/requests/{id}(id=${row.id()})}"><code th:text="${row.shortId()}">id</code></a></td>
+        <td><span class="tag" th:classappend="${row.status()}" th:text="${row.status()}">STATUS</span></td>
+        <td class="muted" th:text="${row.received()}">date</td>
+        <td th:class="${row.overdue()} ? 'tag OVERDUE' : 'muted'" th:text="${row.deadline()}">deadline</td>
+    </tr>
+</table>
+<p class="empty" th:if="${#lists.isEmpty(rows)}">No requests yet.</p>
+
+<h2>Connected systems</h2>
+<table>
+    <tr><th>Name</th><th>Stage</th><th>Address</th></tr>
+    <tr th:each="c : ${connectors}">
+        <td th:text="${c.name}">name</td>
+        <td th:text="${c.stage}">1</td>
+        <td class="muted"><code th:text="${c.endpointUrl}">url</code></td>
+    </tr>
+</table>
+<p class="empty" th:if="${#lists.isEmpty(connectors)}">No systems registered yet.</p>
+</body>
+</html>

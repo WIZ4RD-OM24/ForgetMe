@@ -1,15 +1,13 @@
 package dev.forgetme;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/requests")
@@ -42,25 +41,25 @@ class RequestController {
     }
 
     /** What the admin sees: the same plus each connector's progress. */
-    record Detail(UUID id, RequestStatus status, Instant receivedAt, Instant dueAt, Instant runAfter, List<TaskView> tasks) {}
-
-    record TaskView(String connector, int stage, Task.Status status, Task.Result result, String note, int attempts) {}
+    record Detail(UUID id, RequestStatus status, Instant receivedAt, Instant dueAt, Instant runAfter,
+                  List<RequestService.TaskLine> tasks) {}
 
     private final RequestService service;
     private final Dispatcher dispatcher;
-    private final TaskRepository tasks;
-    private final ConnectorRepository connectors;
+    private final RateLimiter limiter;
 
-    RequestController(RequestService service, Dispatcher dispatcher, TaskRepository tasks, ConnectorRepository connectors) {
+    RequestController(RequestService service, Dispatcher dispatcher, RateLimiter limiter) {
         this.service = service;
         this.dispatcher = dispatcher;
-        this.tasks = tasks;
-        this.connectors = connectors;
+        this.limiter = limiter;
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    View file(@Valid @RequestBody FileBody body) {
+    View file(@Valid @RequestBody FileBody body, HttpServletRequest caller) {
+        if (!limiter.allow(caller.getRemoteAddr(), Instant.now())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too many requests from this address. Try again later.");
+        }
         return View.of(service.file(body.email()));
     }
 
@@ -88,13 +87,7 @@ class RequestController {
     @GetMapping("/{id}")
     Detail get(@PathVariable UUID id) {
         PrivacyRequest r = service.get(id);
-        Map<UUID, String> names = connectors.findAll().stream().collect(Collectors.toMap(Connector::getId, Connector::getName));
-        List<TaskView> progress = tasks.findByRequestId(id).stream()
-                .sorted(Comparator.comparing(Task::getStage))
-                .map(t -> new TaskView(names.get(t.getConnectorId()), t.getStage(), t.getStatus(), t.getResult(),
-                        t.getNote(), t.getAttempts()))
-                .toList();
-        return new Detail(r.getId(), r.getStatus(), r.getReceivedAt(), r.getDueAt(), r.getRunAfter(), progress);
+        return new Detail(r.getId(), r.getStatus(), r.getReceivedAt(), r.getDueAt(), r.getRunAfter(), service.progress(id));
     }
 
     @ExceptionHandler(RequestStatus.IllegalTransition.class)

@@ -23,4 +23,8 @@ public interface PrivacyRequestRepository extends JpaRepository<PrivacyRequest, 
     List<UUID> findIdsWithExpiredCode(Instant now);
 
     List<PrivacyRequest> findByStatusInAndDueAtBefore(Collection<RequestStatus> statuses, Instant before);
+
+    int countBySubjectHashAndReceivedAtAfter(byte[] subjectHash, Instant since);
+
+    List<PrivacyRequest> findTop50ByOrderByReceivedAtDesc();
 }

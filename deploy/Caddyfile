@@ -1,0 +1,17 @@
+# Caddy gets and renews HTTPS certificates by itself, as long as $DOMAIN points at this server.
+{$DOMAIN} {
+	# The demo's fake inbox, where visitors read their confirmation code.
+	handle /mail/* {
+		reverse_proxy mailpit:8025
+	}
+
+	# What each demo system still holds: /demo/users/data, /demo/orders/data, ...
+	handle_path /demo/users/* { reverse_proxy users:8080 }
+	handle_path /demo/orders/* { reverse_proxy orders:8080 }
+	handle_path /demo/uploads/* { reverse_proxy uploads:8080 }
+	handle_path /demo/mailing/* { reverse_proxy mailing:8080 }
+
+	handle {
+		reverse_proxy orchestrator:8080
+	}
+}

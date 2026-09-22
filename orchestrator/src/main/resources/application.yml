@@ -29,3 +29,5 @@ forgetme:
   retry-backoff: PT10S            # wait before the first retry; doubles every time
   callback-timeout: PT5M          # send again if a connector hasn't reported back by then
   tick: PT5S                      # how often the dispatcher looks for work
+  filings-per-hour: 20            # how many requests one IP address may file per hour
+  allowed-email-domains: ""       # empty means any address; a public demo should limit this, e.g. example.com

@@ -1,0 +1,18 @@
+:root { color-scheme: light dark; --line: #8883; --muted: #7a7a7a; }
+body { font: 15px/1.5 system-ui, sans-serif; margin: 0 auto; padding: 24px 16px; max-width: 1000px; }
+h1 { font-size: 1.4rem; margin: 0 0 4px; }
+h2 { font-size: 1.05rem; margin: 28px 0 8px; }
+a { color: inherit; }
+p.sub { color: var(--muted); margin: 0 0 20px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+code { font-family: ui-monospace, monospace; font-size: 0.88em; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.78rem; border: 1px solid var(--line); }
+.RUNNING, .WAITING, .SENT, .PENDING { background: #3b82f622; }
+.COMPLETED, .DONE, .DELETED { background: #22c55e22; }
+.NEEDS_ATTENTION, .FAILED, .OVERDUE { background: #ef444422; }
+.CANCELLED, .REJECTED, .RETAINED, .ANONYMIZED { background: #f59e0b22; }
+.muted { color: var(--muted); }
+button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
+.empty { color: var(--muted); padding: 24px 0; }

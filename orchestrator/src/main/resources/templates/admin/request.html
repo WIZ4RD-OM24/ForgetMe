@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ForgetMe request</title>
+    <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+<p><a href="/admin">&larr; All requests</a></p>
+<h1><code th:text="${request.id}">id</code></h1>
+<p class="sub">
+    <span class="tag" th:classappend="${request.status}" th:text="${request.status}">STATUS</span>
+    received <span th:text="${received}">date</span>, due <span th:text="${deadline}">date</span>.
+    <a th:if="${request.status.name() == 'COMPLETED'}"
+       th:href="@{/api/requests/{id}/certificate(id=${request.id})}">Certificate</a>
+</p>
+
+<form th:if="${request.status.name() == 'NEEDS_ATTENTION'}"
+      th:action="@{/admin/requests/{id}/retry(id=${request.id})}" method="post">
+    <button type="submit">Retry the failed systems</button>
+</form>
+
+<h2>Systems</h2>
+<table>
+    <tr><th>System</th><th>Stage</th><th>Status</th><th>Result</th><th>Tries</th><th>Note</th></tr>
+    <tr th:each="t : ${tasks}">
+        <td th:text="${t.connector()}">name</td>
+        <td th:text="${t.stage()}">1</td>
+        <td><span class="tag" th:classappend="${t.status()}" th:text="${t.status()}">DONE</span></td>
+        <td><span th:if="${t.result()}" class="tag" th:classappend="${t.result()}" th:text="${t.result()}">DELETED</span></td>
+        <td th:text="${t.attempts()}">1</td>
+        <td class="muted" th:text="${t.note()}"></td>
+    </tr>
+</table>
+<p class="empty" th:if="${#lists.isEmpty(tasks)}">Nothing sent out yet.</p>
+
+<h2>History</h2>
+<table>
+    <tr><th>When</th><th>Event</th><th>Detail</th></tr>
+    <tr th:each="e : ${history}">
+        <td class="muted" th:text="${e.when()}">date</td>
+        <td th:text="${e.event()}">EVENT</td>
+        <td class="muted" th:text="${e.detail()}"></td>
+    </tr>
+</table>
+</body>
+</html>
