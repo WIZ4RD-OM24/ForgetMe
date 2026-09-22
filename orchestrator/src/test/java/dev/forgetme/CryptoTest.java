@@ -45,6 +45,13 @@ class CryptoTest {
         assertFalse(Crypto.verify("secret", now, body, null));
     }
 
+    /** The connector starter's SignaturesTest checks the very same answer, so the two sides can't drift apart. */
+    @Test
+    void signaturesMatchTheConnectorStarter() {
+        assertEquals("sha256=b70095be55cf13244de1343649a07601751b1aceeb554e1def7092774d075842",
+                Crypto.sign("demo-only-secret-users-change-me", 1700000000L, "{\"result\":\"DELETED\"}"));
+    }
+
     @Test
     void auditLinksChangeWhenAnythingChanges() {
         UUID id = UUID.randomUUID();

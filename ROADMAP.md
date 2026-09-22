@@ -3,7 +3,7 @@
 Each milestone ends with something you can demo. Rough pace: one weekend each.
 Each phase has a plain-English write-up in [docs/](docs/).
 
-**Now:** M3 done. **Next:** M4, the connector starter and a pretend company to demo on.
+**Now:** M4 done. **Next:** M5, ship it: admin page, CI, deploy, load test.
 
 ## ✅ M0: Plan
 - [x] Pick the project and a working name
@@ -57,15 +57,20 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 
 **Done when:** a finished request has a certificate, no readable PII remains, and tampering is detected. ✅
 
-## M4: Connector starter + demo world
-- [ ] `forgetme-spring-boot-starter`: auto-config, `@ErasureHandler`, signature check, idempotency, async report
-- [ ] `users-service` (stage 3): deletes the account
-- [ ] `orders-service` (stage 2): anonymizes orders, `RETAINED` for invoices
-- [ ] `uploads-service` (stage 2): deletes files from MinIO
-- [ ] `mailing-stub` (stage 1): unsubscribes, fails randomly
-- [ ] Full Docker Compose: one command starts everything
+## ✅ M4: Connector starter + demo world · [docs/phase-4.md](docs/phase-4.md)
+- [x] `forgetme-spring-boot-starter`: auto-config, an `ErasureHandler` bean (simpler than the planned `@ErasureHandler` annotation scanning), signature check, handler runs before answering, signed report on a virtual thread
+- [x] At-least-once delivery documented: handlers must be idempotent; lost reports are covered by the orchestrator re-sending
+- [x] Starter and orchestrator pinned to the same signature by a shared known-answer test
+- [x] Connectors can be registered with their own secret (32+ chars), for scripted setup
+- [x] Demo app, one program playing four roles via Spring profiles:
+  - [x] `users` (stage 3): deletes the account
+  - [x] `orders` (stage 2): removes the email from orders, `RETAINED` for invoices
+  - [x] `uploads` (stage 2): deletes the customer's folder on disk (MinIO dropped: a folder shows the same thing with nothing extra to run)
+  - [x] `mailing` (stage 1): unsubscribes; fails the first try of every request (deterministic instead of random, so every demo shows a retry)
+- [x] Multi-stage `Dockerfile`; Compose `demo` profile starts everything plus a one-shot setup step that registers the four systems
+- [x] Ran the full demo end to end: Alice deleted everywhere in 48 s, Bob untouched, certificate complete, audit intact
 
-**Done when:** `docker compose up`, file one request, and watch it clean all four services.
+**Done when:** `docker compose up`, file one request, and watch it clean all four services. ✅
 
 ## M5: Ship it
 - [ ] Minimal admin page (Thymeleaf): request list, per-connector status, retry button
@@ -88,6 +93,8 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - Crypto-shredding: per-user encryption keys, so deleting the key "deletes" data inside backups
 - Replay deletions after a backup restore using `subject_hash`
 - Signed PDF certificate for people who need a document to file
+- Starter support for long-running deletions (answer 202 first, report when done)
+- Extract the signing code into a small shared protocol module if a third component needs it
 - Deadline alerts to Slack or a pager, not just email
 - Kafka as an alternative to HTTP for connectors
 
@@ -104,3 +111,5 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - 2026-09-22: M2 built. Dispatcher with lease-based `SKIP LOCKED` claiming, signed requests and reports, exponential backoff, stages, `NEEDS_ATTENTION` + admin retry. Fake connectors use the JDK's `HttpServer` instead of WireMock. Task statuses simplified to `PENDING / SENT / DONE / FAILED`, with `RETAINED` as a result rather than a status. 14 tests pass.
 - 2026-09-22: Pushed to GitHub as a private repo: https://github.com/WIZ4RD-OM24/ForgetMe
 - 2026-09-22: M3 built. HMAC hash-chained audit log with an append-only trigger and a verify endpoint; certificates anchored by the latest audit hash; email erased on every final state (not just `COMPLETED`); deadline alerts emailed to the admin. `code-secret` renamed to `hash-secret`, now used for all keyed fingerprints. 19 tests pass.
+- 2026-09-22: M3 pushed to GitHub.
+- 2026-09-22: M4 built. Connector starter, four-role demo app, Dockerfile, Compose `demo` profile with scripted registration, optional connector secrets. 25 tests pass (21 orchestrator + 4 starter). Full demo run: 48 s from confirmation to certificate.

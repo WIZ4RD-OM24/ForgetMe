@@ -24,9 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/connectors")
 class ConnectorController {
 
+    /** Leave secret out and ForgetMe makes one. Supply your own (32+ characters) to set things up from a script. */
     record NewConnector(@NotBlank @Size(max = 100) String name,
                         @NotBlank @Size(max = 500) @Pattern(regexp = "https?://\\S+") String endpointUrl,
-                        @Min(1) int stage) {}
+                        @Min(1) int stage,
+                        @Size(min = 32, max = 200) String secret) {}
 
     record View(UUID id, String name, String endpointUrl, int stage) {}
 
@@ -44,7 +46,7 @@ class ConnectorController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     Registered register(@Valid @RequestBody NewConnector body) {
-        String secret = crypto.newSecret();
+        String secret = body.secret() != null ? body.secret() : crypto.newSecret();
         Connector c = connectors.save(new Connector(body.name(), body.endpointUrl(), crypto.encrypt(secret), body.stage()));
         return new Registered(c.getId(), c.getName(), c.getEndpointUrl(), c.getStage(), secret);
     }

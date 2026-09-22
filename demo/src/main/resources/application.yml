@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: forgetme-demo
+
+forgetme:
+  connector:
+    secret: ${FORGETME_CONNECTOR_SECRET} # the secret ForgetMe holds for this system; set per service in compose.yaml

@@ -22,5 +22,7 @@
 
     <modules>
         <module>orchestrator</module>
+        <module>forgetme-spring-boot-starter</module>
+        <module>demo</module>
     </modules>
 </project>

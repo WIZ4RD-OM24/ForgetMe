@@ -4,9 +4,11 @@
 
 A self-hosted orchestrator for "delete my data" requests (GDPR Art. 17, India's DPDP Act, CCPA), built with Spring Boot.
 
-**Status:** 🟡 Milestones 1–3 done (19/19 tests passing). Requests are verified, fanned out to every registered system stage by stage with signed messages and retries, recorded in a tamper-evident audit log, and closed with a certificate. The orchestrator erases its own copy of the email when a request finishes. The connector starter and demo services come in M4. See [ROADMAP.md](ROADMAP.md).
+**Status:** 🟡 Milestones 1–4 done (25/25 tests passing, full demo run end to end). Requests are verified, fanned out to every registered system stage by stage with signed messages and retries, recorded in a tamper-evident audit log, and closed with a certificate. A Spring Boot starter turns any app into a connector, and one command runs a four-service demo company. Shipping (CI, deploy, admin page) comes in M5. See [ROADMAP.md](ROADMAP.md).
 
-New here or not a developer? Start with [for-you.md](for-you.md). How each phase works, in plain words: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md).
+**Try it in one command:** `docker compose --profile demo up --build`, then [delete Alice](#option-a-the-full-demo-one-command).
+
+New here or not a developer? Start with [for-you.md](for-you.md). How each phase works, in plain words: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md) · [phase 4](docs/phase-4.md).
 
 ---
 
@@ -27,7 +29,8 @@ Small teams handle this with a spreadsheet and hand-written SQL. Things get miss
 - ✅ Issues a **completion certificate** listing what each system did, pinned to the audit log
 - ✅ **Deletes its own copy** of the email when a request finishes, keeping only a keyed fingerprint
 - ✅ **Warns the admin** by email at 7 days before the legal deadline, and again if it's missed
-- ⬜ Ships a **Spring Boot starter** that turns any service into a connector in about 5 lines
+- ✅ Ships a **Spring Boot starter** that turns any service into a connector in about 5 lines
+- ✅ Comes with a **demo company** (mailing list, orders, uploads, user accounts) that runs with one command
 
 ## How it works
 
@@ -128,7 +131,8 @@ hash = HMAC-SHA256(hash-secret, "audit" ‖ prev_hash ‖ request_id ‖ event �
 
 ```
 forgetme/
-├── compose.yaml                   Postgres + Mailpit for local dev
+├── compose.yaml                   Postgres + Mailpit; add --profile demo for the whole demo
+├── Dockerfile                     one Maven build → orchestrator and demo images
 ├── docs/                          plain-English guide to each phase
 ├── orchestrator/                  Spring Boot app: the brain
 │   └── src/main/java/dev/forgetme/
@@ -145,11 +149,23 @@ forgetme/
 │       ├── DeadlineWatcher        timer: emails the admin at 7 days left / overdue
 │       ├── Crypto                 AES-GCM, keyed fingerprints, request signing
 │       └── SecurityConfig         public vs admin endpoints
-├── forgetme-spring-boot-starter/  (M4) library services add to become connectors
-└── demo/                          (M4) users, orders, uploads, mailing-stub services
+├── forgetme-spring-boot-starter/  library any Spring Boot app adds to become a connector
+│   └── src/main/java/dev/forgetme/connector/
+│       ├── ErasureHandler         the one interface an app implements
+│       ├── ErasureResult          DELETED / ANONYMIZED / RETAINED + note
+│       ├── ErasureEndpoint        POST /privacy/erase: verify, run handler, report
+│       ├── Signatures             same HMAC scheme as the orchestrator
+│       └── ForgetMeConnectorAutoConfiguration
+└── demo/                          one app, four roles (Spring profiles)
+    ├── src/main/java/dev/forgetme/demo/
+    │   ├── MailingSystem          stage 1, fails the first try on purpose
+    │   ├── OrdersSystem           stage 2, removes the email, RETAINED for tax law
+    │   ├── UploadsSystem          stage 2, deletes the customer's folder
+    │   └── UsersSystem            stage 3, deletes the account
+    └── register-connectors.sh     demo setup step
 ```
 
-One Maven multi-module build. Modules are added when they get code.
+One Maven multi-module build: `orchestrator`, `forgetme-spring-boot-starter`, `demo`.
 
 ### Tech stack
 
@@ -165,8 +181,10 @@ One Maven multi-module build. Modules are added when they get code.
 | PII and secrets at rest | AES-256-GCM (JDK `javax.crypto`) |
 | Audit log | HMAC-SHA256 hash chain, Postgres advisory lock for appends, append-only trigger |
 | Email (dev) | Mailpit catches outgoing mail locally |
+| Connector library | Spring Boot auto-configuration, JDK `HttpClient`, virtual threads |
 | Tests | JUnit 5, Testcontainers, fake connectors on the JDK's built-in `HttpServer` |
-| Build | Maven wrapper (`mvnw`) |
+| Build | Maven wrapper (`mvnw`); multi-stage `Dockerfile` with a Maven cache mount |
+| Demo | Docker Compose `demo` profile: orchestrator + 4 services + one-shot setup |
 | CI (M5) | GitHub Actions |
 
 ### Data model
@@ -192,7 +210,7 @@ audit_event     (id bigserial, request_id, event, detail, created_at, prev_hash,
 | `POST` | `/api/requests/{id}/cancel` | public | Cancel before deletion starts | ✅ |
 | `GET` | `/api/requests/{id}` | admin | Status, deadline and each connector's progress | ✅ |
 | `POST` | `/api/requests/{id}/retry` | admin | Retry failed tasks after `NEEDS_ATTENTION` | ✅ |
-| `POST` | `/api/connectors` | admin | Register a connector (returns its secret once) | ✅ |
+| `POST` | `/api/connectors` | admin | Register a connector: `name`, `endpointUrl`, `stage`, optional `secret` (32+ chars, else generated). Returns the secret once | ✅ |
 | `GET` | `/api/connectors` | admin | List connectors | ✅ |
 | `POST` | `/api/callbacks/{taskId}` | connector (signed) | Report a result | ✅ |
 | `GET` | `/api/requests/{id}/certificate` | admin | Completion certificate (409 until `COMPLETED`) | ✅ |
@@ -200,17 +218,27 @@ audit_event     (id bigserial, request_id, event, detail, created_at, prev_hash,
 
 Verify responses: `200` code correct (request is now `WAITING`), `400` wrong code (says how many attempts are left), `410` expired or out of attempts, `409` request isn't awaiting a code.
 
-### A connector in 5 lines (planned, M4)
+### A connector in 5 lines: the starter
+
+Add `dev.forgetme:forgetme-spring-boot-starter`, define one bean:
 
 ```java
-@ErasureHandler
-ErasureResult erase(Subject subject) {
-    orderRepo.anonymizeByCustomer(subject.userId());
-    return ErasureResult.retained("invoices kept 8 years: tax law");
+@Bean
+ErasureHandler erasure(OrderRepository orders) {
+    return subject -> {
+        orders.removeEmail(subject.email());
+        return ErasureResult.retained("invoices kept 8 years for tax law; email removed");
+    };
 }
 ```
 
-The starter will handle signature checks, idempotency and the report.
+and set `forgetme.connector.secret` to the secret ForgetMe returned at registration. Auto-configuration then exposes `POST /privacy/erase`, which:
+
+1. verifies the signature and timestamp (`401` otherwise)
+2. runs the handler. An exception → `500`, so ForgetMe retries with backoff
+3. answers `202` and sends the signed report to `callbackUrl` on a virtual thread
+
+Handlers must be idempotent: jobs are delivered at least once. If your app uses Spring Security, permit `POST /privacy/erase`; the signature is the authentication.
 
 ## Design decisions
 
@@ -239,6 +267,11 @@ The starter will handle signature checks, idempotency and the report.
 | Fields length-prefixed inside the hash | `("AB","C")` and `("A","BC")` can't collide | Never |
 | Erase the email on every final state, keep an HMAC fingerprint | The privacy tool shouldn't itself be a PII store; the fingerprint proves who was deleted and allows re-applying deletions after a backup restore | Never |
 | Audit details capped at 500 chars | A long connector note must never make a report fail and loop forever | Never |
+| Starter API is one functional-interface bean, not annotation scanning | Less magic and less code; it's obvious where the handler comes from | Apps need several handlers |
+| Starter runs the handler before answering, reports afterwards | Failures become a fast `500` + backoff instead of a 5-minute callback timeout | Handlers take longer than the 10 s read timeout |
+| Signing code duplicated in the starter, pinned by a shared known-answer test | The starter stays dependency-free of the orchestrator; the test catches drift | A third component needs it (extract a protocol module) |
+| Connectors may bring their own secret | Scripted setup (the demo, infrastructure-as-code); generated is still the default | Never |
+| One demo app, four Spring profiles, in-memory data | One small class per system; the demo exists to show ForgetMe, not storage (MinIO dropped) | Never |
 
 ## Security
 
@@ -250,15 +283,44 @@ The starter will handle signature checks, idempotency and the report.
 - Request IDs are random UUIDs; everything except file/verify/cancel and signed callbacks requires admin login
 - Coming: rate limiting (M5)
 
-**Known gaps (until M5):** the public endpoint has no rate limit, so it could be used to send confirmation emails to arbitrary addresses. Connector URLs are admin-entered and not restricted, so an admin could point one at an internal address. Secrets have dev defaults in `application.yml` and must be overridden with `FORGETME_ENCRYPTION_KEY`, `FORGETME_HASH_SECRET` and `FORGETME_ADMIN_PASSWORD` before deploying.
+**Known gaps (until M5):** the public endpoint has no rate limit, so it could be used to send confirmation emails to arbitrary addresses. Connector URLs are admin-entered and not restricted, so an admin could point one at an internal address. The demo's connector secrets are written in `compose.yaml` and labelled demo-only. Secrets have dev defaults in `application.yml` and must be overridden with `FORGETME_ENCRYPTION_KEY`, `FORGETME_HASH_SECRET` and `FORGETME_ADMIN_PASSWORD` before deploying.
 
 ## Getting started
+
+```bash
+git clone https://github.com/WIZ4RD-OM24/ForgetMe.git && cd ForgetMe
+```
+
+### Option A: the full demo, one command
+
+**Needs:** Docker only. Port 8080 must be free.
+
+```bash
+docker compose --profile demo up --build
+```
+
+This builds everything and starts ForgetMe, the four demo systems, Postgres and Mailpit. A setup step then registers the systems (wait for `Demo ready`). If you've used this checkout before, `docker compose down -v` first gives you a clean database.
+
+```bash
+# Delete Alice. Get the code from http://localhost:8025
+curl -s -X POST localhost:8080/api/requests -H 'Content-Type: application/json' -d '{"email":"alice@example.com"}'
+curl -s -X POST localhost:8080/api/requests/<id>/verify -H 'Content-Type: application/json' -d '{"code":"<code>"}'
+
+# Watch her disappear (refresh): mailing → uploads + orders → users. Bob stays.
+curl -s localhost:8084/data; curl -s localhost:8083/data; curl -s localhost:8082/data; curl -s localhost:8081/data
+
+# About a minute later
+curl -s -u admin:admin localhost:8080/api/requests/<id>/certificate
+```
+
+Measured on a laptop: done in 48 s (20 s cooling-off, one deliberate retry on mailing, three stages), certificate complete, audit chain intact.
+
+### Option B: develop ForgetMe itself
 
 **Needs:** Java 21 (`JAVA_HOME` must point to it) and Docker.
 
 ```bash
-git clone https://github.com/WIZ4RD-OM24/ForgetMe.git && cd ForgetMe
-docker compose up -d                          # Postgres + Mailpit
+docker compose up -d                          # just Postgres + Mailpit
 ./mvnw -pl orchestrator spring-boot:run       # Windows: .\mvnw.cmd -pl orchestrator spring-boot:run
 ```
 
@@ -279,7 +341,7 @@ curl -s -u admin:admin localhost:8080/api/requests/<id>
 curl -s -u admin:admin localhost:8080/api/audit/verify
 curl -s -u admin:admin localhost:8080/api/requests/<id>/certificate
 ```
-Nothing listens on port 9999, so you'll see the retries in the log and the request end in `NEEDS_ATTENTION` after about 2.5 minutes. With no connectors registered, a request completes straight after cooling-off, which is the quickest way to see a certificate. Real demo connectors arrive in M4.
+Nothing listens on port 9999, so you'll see the retries in the log and the request end in `NEEDS_ATTENTION` after about 2.5 minutes. With no connectors registered, a request completes straight after cooling-off, which is the quickest way to see a certificate. For connectors that really delete things, use Option A.
 
 Dev settings live in `application.yml`: `cooling-off` (1 min), `retry-backoff` (10 s, doubling), `callback-timeout` (5 min), `tick` (5 s), `admin-email` (deadline alerts; lands in Mailpit).
 
@@ -287,7 +349,7 @@ Run the tests:
 ```bash
 ./mvnw test
 ```
-The end-to-end tests (`RequestFlowTest`) start a throwaway Postgres in Docker and are skipped automatically when Docker isn't running.
+This runs all three modules' tests. The orchestrator's end-to-end tests (`RequestFlowTest`) start a throwaway Postgres in Docker and are skipped automatically when Docker isn't running.
 
 ## Non-goals
 

@@ -1,3 +1,7 @@
+# Two ways to use this file:
+#   docker compose up -d                        -> just Postgres + Mailpit, for running ForgetMe from your IDE or mvnw
+#   docker compose --profile demo up --build    -> everything: ForgetMe + a pretend company of four systems
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -7,11 +11,61 @@ services:
       POSTGRES_PASSWORD: forgetme
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forgetme"]
+      interval: 2s
+      retries: 30
 
   # Catches outgoing email. Inbox UI: http://localhost:8025
   mailpit:
     image: axllent/mailpit
     ports: ["1025:1025", "8025:8025"]
+
+  # ---- the full demo ----
+
+  orchestrator:
+    profiles: [demo]
+    build: { context: ., target: orchestrator }
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/forgetme
+      SPRING_MAIL_HOST: mailpit
+      FORGETME_BASEURL: http://orchestrator:8080 # where the demo systems send their reports
+      FORGETME_COOLINGOFF: PT20S                 # short, so the demo doesn't keep you waiting
+    ports: ["8080:8080"]
+
+  mailing:
+    profiles: [demo]
+    build: { context: ., target: demo }
+    environment: { SPRING_PROFILES_ACTIVE: mailing, FORGETME_CONNECTOR_SECRET: demo-only-secret-mailing-change-me }
+    ports: ["8084:8080"]
+
+  orders:
+    profiles: [demo]
+    build: { context: ., target: demo }
+    environment: { SPRING_PROFILES_ACTIVE: orders, FORGETME_CONNECTOR_SECRET: demo-only-secret-orders-change-me }
+    ports: ["8082:8080"]
+
+  uploads:
+    profiles: [demo]
+    build: { context: ., target: demo }
+    environment: { SPRING_PROFILES_ACTIVE: uploads, FORGETME_CONNECTOR_SECRET: demo-only-secret-uploads-change-me }
+    ports: ["8083:8080"]
+
+  users:
+    profiles: [demo]
+    build: { context: ., target: demo }
+    environment: { SPRING_PROFILES_ACTIVE: users, FORGETME_CONNECTOR_SECRET: demo-only-secret-users-change-me }
+    ports: ["8081:8080"]
+
+  # Runs once: registers the four systems with ForgetMe, then exits.
+  setup:
+    profiles: [demo]
+    image: curlimages/curl
+    depends_on: [orchestrator, mailing, orders, uploads, users]
+    volumes: ["./demo/register-connectors.sh:/register-connectors.sh:ro"]
+    entrypoint: ["sh", "/register-connectors.sh"]
 
 volumes:
   pgdata:

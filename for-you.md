@@ -1,18 +1,19 @@
 # ForgetMe, explained simply
 
 *This file explains the project in plain English. It's updated every time the project changes.*
-*For how each step works in detail (the code, the tools, the reasons), see the phase guides: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md).*
+*For how each step works in detail (the code, the tools, the reasons), see the phase guides: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md) · [phase 4](docs/phase-4.md).*
 
 ## Where we are right now
 
-**Steps 1, 2 and 3 of 5 are done.**
+**Steps 1 to 4 of 5 are done.**
 - **Step 1:** someone can ask to be deleted and prove it's them with an emailed code. *(Tried by hand ✅)*
 - **Step 2:** once confirmed, ForgetMe contacts every part of the company that holds their data, in the right order, keeps retrying the ones that fail, and finishes when everyone has reported back.
 - **Step 3:** every step is written in a diary nobody can secretly edit; a finished request gets a receipt (certificate); ForgetMe forgets the email once a request is over; the admin is emailed when a deadline gets close.
+- **Step 4:** a plug-in lets any app join ForgetMe with about 5 lines, and **one command** starts a pretend company of four systems. We deleted "Alice" from all four in 48 seconds.
 
-**All 19 automatic checks pass.**
+**All 25 automatic checks pass.**
 **The code is on GitHub** at https://github.com/WIZ4RD-OM24/ForgetMe. It's private for now, so only you can see it. Make it public when you want to show it on your resume.
-**Next:** Step 4, a pretend company (4 tiny apps) to demo on, and a plug-in so other programmers can connect their apps in about 5 lines.
+**Next:** Step 5, ship it: a simple admin web page, automatic testing on GitHub, putting it online, and measuring how much traffic it can handle.
 
 ---
 
@@ -58,6 +59,15 @@ ForgetMe is that **moving-out helper**, but for a company's computer systems. A 
 - **ForgetMe forgets too.** The moment a request is over (done, cancelled or rejected), ForgetMe wipes its own copy of the email. It keeps only a fingerprint that proves *who* was deleted but can't be turned back into the email.
 - **Deadline warnings.** The admin gets one email when a request has 7 days left, and one more if it goes past its deadline.
 
+### Step 4: "Make it easy to join, and show it working"
+- **The plug-in (a "starter").** Another programmer adds it to their app and writes one small piece: *how to delete a person in my app*. The plug-in does everything else: opens the door ForgetMe knocks on, checks the secret stamp, runs their deletion, and sends a stamped reply back.
+- **The pretend company.** Four small systems, each holding some customer data:
+  - a **mailing list**, which on purpose fails its first try every time, so you can watch ForgetMe retry
+  - **orders**, which keeps the orders for tax law but removes the email from them
+  - **uploads**, which deletes the customer's photo folder
+  - **user accounts**, which are deleted last
+- **One command starts it all**, inside Docker: ForgetMe, the four systems, the database and the fake inbox. Then you ask to delete Alice and watch her disappear from each system in the right order, while Bob stays.
+
 ### Why the order matters
 
 The main customer account is like **your contact list**. It holds the email, phone number and IDs that the other parts need to find the right data. Delete the contact list first and you can't reach anyone else. So:
@@ -75,7 +85,7 @@ The main customer account is like **your contact list**. It holds the email, pho
 | 1 ✅ | Someone can ask to be deleted and confirm with an email code |
 | 2 ✅ | ForgetMe contacts every part of the company in order, and keeps retrying the ones that fail |
 | 3 ✅ | A receipt at the end, a tamper-proof diary, and warnings when a deadline is close |
-| 4 | A pretend company (4 tiny apps) to demo on, plus a plug-in so other programmers can connect their apps in 5 lines |
+| 4 ✅ | A pretend company (4 tiny apps) to demo on, plus a plug-in so other programmers can connect their apps in 5 lines |
 | 5 | It's live on the internet, tested, with a simple admin page and a short demo video |
 
 ## Try it yourself
@@ -83,7 +93,16 @@ The main customer account is like **your contact list**. It holds the email, pho
 **Before you start:** open Docker Desktop and wait until it says it's running.
 *If it gets stuck on "starting"* (this happened once, right after installing): quit it fully (right-click the whale icon near the clock → Quit), then open it again.
 
-**Start everything** (in PowerShell, inside the project folder):
+**The quickest way to see everything: the pretend company.** Follow the [phase 4 guide](docs/phase-4.md). In short:
+```powershell
+docker compose down -v
+```
+```powershell
+docker compose --profile demo up --build
+```
+Then ask to delete alice@example.com and watch her disappear from the four systems.
+
+**Or run just ForgetMe** (in PowerShell, inside the project folder):
 ```powershell
 docker compose up -d
 ```
@@ -136,7 +155,13 @@ To run the automatic checks:
 | Idempotent | Doing something twice has the same effect as doing it once. Important because retries can repeat a message |
 | Saga | A multi-step process across many systems. Ours only moves forward, since you can't "un-delete" |
 | PII | "Personally identifiable information": names, emails, phone numbers |
-| Docker / Docker Compose | Runs the database and fake inbox on your computer with one command |
+| Docker / Docker Compose | Runs the database, fake inbox, ForgetMe and the pretend company on your computer with one command |
+| Container / image | An *image* is a packed-up program with everything it needs; a *container* is one running copy of it |
+| Dockerfile | The recipe Docker follows to build the images |
+| Starter (plug-in) | A ready-made add-on for Spring Boot apps. Ours turns any app into a ForgetMe connector |
+| Auto-configuration | Spring Boot noticing the plug-in and switching it on by itself |
+| Profile | A named setting that changes how an app behaves. Our demo app is one program that plays four different systems depending on its profile |
+| At-least-once | A job may arrive more than once, but never zero times. That's why deleting something already gone must count as success |
 | WSL | Lets Windows run Linux in the background; Docker needs it |
 | Mailpit | A fake inbox on your computer that catches test emails so none are really sent |
 | Testcontainers | Starts a real, throwaway database just for the tests |
@@ -153,3 +178,4 @@ Good interview stories so far (each phase guide has a short list you can use):
 - why the to-do list is a database table and not Kafka
 - how two simultaneous replies could have left a request stuck forever, and the lock that prevents it
 - how the diary catches tampering even by someone with full database access, and why the times had to be cut to microseconds to avoid false alarms
+- building a plug-in that other teams can adopt with one dependency and 5 lines, and a one-command demo anyone can run

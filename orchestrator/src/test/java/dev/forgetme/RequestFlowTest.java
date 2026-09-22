@@ -250,6 +250,16 @@ class RequestFlowTest {
         assertEquals(400, rawReport(taskId, now, nonsense, Crypto.sign(secret, now, nonsense)));
     }
 
+    @Test
+    void aConnectorCanBringItsOwnSecret() {
+        String own = "demo-only-secret-users-change-me";
+        Map<String, Object> body = Map.of("name", "users", "endpointUrl", "http://users:8080/privacy/erase", "stage", 3, "secret", own);
+        assertEquals(own, call(POST, "/connectors", body, true).getBody().get("secret"));
+
+        Map<String, Object> weak = Map.of("name", "weak", "endpointUrl", "http://weak/erase", "stage", 1, "secret", "too-short");
+        assertEquals(400, call(POST, "/connectors", weak, true).getStatusCode().value(), "short secrets are refused");
+    }
+
     // ---- Phase 3: proof and deadlines ----
 
     @Test

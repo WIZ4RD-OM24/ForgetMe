@@ -79,7 +79,7 @@ The timings are settings in `application.yml`:
 
 ### Try it by hand
 
-There are no real connectors until phase 4, but you can watch the retries against an address where nothing is listening. In PowerShell, with ForgetMe running:
+*(For real connectors that actually delete things, see the [phase 4 demo](phase-4.md).)* You can watch the retries against an address where nothing is listening. In PowerShell, with ForgetMe running:
 
 ```powershell
 $admin = @{ Authorization = "Basic " + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("admin:admin")) }
