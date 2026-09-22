@@ -8,6 +8,16 @@
 
 ## What's new
 
+### 0. A web page for the person asking to be deleted
+
+Open **http://localhost:8080/** and it's three screens, no commands needed:
+
+1. **Ask.** Type your email, press "Send me a code".
+2. **Confirm.** Type the 6-digit code from your inbox. A wrong code says so and lets you try again.
+3. **Watch.** The page updates itself every 5 seconds: first "deleting starts at …, you have a moment to change your mind" with a cancel button, then each system appearing with what it did (*deleted*, *kept for tax law*, and so on), and finally **your receipt**: when it finished, whether it was inside the legal deadline, your fingerprint and the proof code.
+
+The address of that page is the only way back to the request, and it contains a random ID nobody can guess. There's no login, because there's no account to log into.
+
 ### 1. An admin web page
 
 Open **http://localhost:8080/admin** and log in (`admin` / `admin` locally).
@@ -116,6 +126,8 @@ Only `example.com` addresses are accepted in production, so nobody's real inbox 
 
 | File | What it does |
 |---|---|
+| `PublicPageController` | The three screens for the person asking. One page (`/r/{id}`) covers confirm, watch and receipt: it shows whichever part fits the request's current status |
+| `templates/public/home.html`, `status.html` | Those pages |
 | `AdminPageController` | Builds the two admin pages. Dates are formatted here so the templates stay simple |
 | `templates/admin/requests.html`, `request.html` | The two pages (Thymeleaf) |
 | `static/admin.css` | ~25 lines of styling, light and dark |
@@ -131,6 +143,9 @@ Only `example.com` addresses are accepted in production, so nobody's real inbox 
 
 | Choice | Plain-English reason |
 |---|---|
+| **Pages built by the server, not a separate JavaScript app** | Two small HTML files and ~40 lines of styling do the job. A React app would be more to build, more to run, and would show nothing extra |
+| **One page for confirm, watch and receipt** | It's one thing to the visitor: "my request". One address to keep, and it always shows whatever's true right now |
+| **The page refreshes itself every 5 seconds** | A plain HTML line does it. No JavaScript, no live connection to keep open |
 | **A separate rule set for the admin pages** | Browser pages need protection against a trick where another website makes your browser press a button on this one (CSRF). The JSON API doesn't need it, and turning it on there would just get in the way. |
 | **Limits counted in memory** | No extra system to run. If ForgetMe ever runs as several copies, each would count on its own, so that would move to a shared store. |
 | **A per-email limit as well as per-address** | The address limit alone wouldn't stop someone using many addresses to spam one person's inbox. |
@@ -143,18 +158,20 @@ Only `example.com` addresses are accepted in production, so nobody's real inbox 
 
 | Test | What it checks |
 |---|---|
+| `RequestFlowTest` → `anyoneCanAskConfirmAndWatchFromTheWebPages` | The whole visitor journey through the forms: ask → wrong code is refused with a message → right code → "confirmed" → cancel |
 | `RateLimiterTest` (2) | Allows up to the limit and then stops; counts each caller separately; forgets after an hour |
 | `RequestFlowTest` → `oneAddressCantBeFloodedWithRequests` | The 4th request for the same address in a day is refused (429), capital letters don't sneak past, other addresses are unaffected |
 | `RequestFlowTest` → `adminPageListsRequestsAndIsPrivate` | The page needs a login, lists the request, shows the audit status, and the detail page shows the status |
 | Everything from phases 1–4 | Still passing: 29 tests in total |
 
-Checked by hand as well: the admin pages in a browser, and the production mode refusing to start without secrets.
+Checked by hand as well: all four screens clicked through in a real browser (ask → code → confirmed → receipt), the admin pages, and the production mode refusing to start without secrets. 30 tests in total.
 
 ## Kept simple on purpose
 
 | Shortcut | Fine for now because | Change it when |
 |---|---|---|
 | Admin login is the browser's built-in password box | One admin, one password | Several people need accounts |
+| The visitor's page is plain HTML, refreshed every 5 s | Nothing moves fast enough to need more | You want a live progress bar (then use server-sent events) |
 | Limits reset on restart | The app restarts rarely | It runs as several copies |
 | No metrics dashboard | The admin page and logs are enough | You need trends over time (Actuator + Grafana) |
 | The demo's data comes back only on restart | A cron line handles it | Never |

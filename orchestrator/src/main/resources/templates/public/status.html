@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Your deletion request</title>
+    <link rel="stylesheet" href="/style.css">
+    <!-- While there's work going on, refresh by itself so the page keeps up -->
+    <meta th:if="${working}" http-equiv="refresh" content="5">
+</head>
+<body class="narrow">
+<h1>Your deletion request</h1>
+<p class="sub">Keep this page's address: it's the only way back to your request. <code th:text="${request.id}">id</code></p>
+
+<!-- Step 2: confirm it's you -->
+<div th:if="${request.status.name() == 'RECEIVED'}">
+    <h2>Enter your code</h2>
+    <p>We emailed a 6-digit code. It expires in 24 hours.</p>
+    <p class="error" th:if="${wrongCode}">That code isn't right. Check the email and try again.</p>
+    <form th:action="@{/r/{id}/confirm(id=${request.id})}" method="post">
+        <label for="code">Confirmation code</label>
+        <input id="code" name="code" inputmode="numeric" pattern="\d{6}" maxlength="6" required autofocus placeholder="123456">
+        <button type="submit">Confirm</button>
+    </form>
+    <p class="note" th:if="${inboxUrl}">Demo: your code is in <a th:href="${inboxUrl}" target="_blank">the demo inbox</a>.</p>
+</div>
+
+<!-- Step 3: watch it happen -->
+<div th:if="${request.status.name() == 'WAITING'}">
+    <h2>Confirmed</h2>
+    <p>Deleting starts at <strong th:text="${startsAt}">time</strong>, so you have a moment to change your mind.</p>
+    <form th:action="@{/r/{id}/cancel(id=${request.id})}" method="post">
+        <button type="submit" class="quiet">Cancel my request</button>
+    </form>
+</div>
+
+<div th:if="${request.status.name() == 'RUNNING'}">
+    <h2>Deleting now</h2>
+    <p>Each system is being asked in turn. This page updates itself.</p>
+</div>
+
+<div th:if="${request.status.name() == 'NEEDS_ATTENTION'}">
+    <h2>One system didn't answer</h2>
+    <p>Everything else is done, and a member of staff has been alerted to finish the rest.</p>
+</div>
+
+<div th:if="${request.status.name() == 'CANCELLED'}">
+    <h2>Cancelled</h2>
+    <p>Nothing was deleted. You can <a href="/">start again</a> any time.</p>
+</div>
+
+<div th:if="${request.status.name() == 'REJECTED'}">
+    <h2>This request expired</h2>
+    <p>The code wasn't confirmed in time, or it was entered wrongly too many times. Please <a href="/">start again</a>.</p>
+</div>
+
+<!-- Progress, once there's something to show -->
+<table th:if="${not #lists.isEmpty(tasks)}">
+    <tr><th>System</th><th>Status</th><th>What it did</th></tr>
+    <tr th:each="t : ${tasks}">
+        <td th:text="${t.connector()}">name</td>
+        <td><span class="tag" th:classappend="${t.status()}" th:text="${t.status() == T(dev.forgetme.Task.Status).DONE ? 'done' : 'in progress'}">done</span></td>
+        <td>
+            <span th:if="${t.result()}" class="tag" th:classappend="${t.result()}" th:text="${t.result()}">DELETED</span>
+            <span class="muted" th:text="${t.note()}"></span>
+        </td>
+    </tr>
+</table>
+
+<!-- Step 4: the receipt -->
+<div th:if="${request.status.name() == 'COMPLETED'}" class="receipt">
+    <h2>Done. Here's your receipt</h2>
+    <p>
+        Every system reported back by <strong th:text="${completedAt}">time</strong><span th:if="${onTime}">, well inside the legal deadline</span>.
+        We also deleted our own copy of your email address; all that's left is a fingerprint of it, which can't be turned back into an address.
+    </p>
+    <table>
+        <tr><th>Your fingerprint</th><td><code th:text="${fingerprint}">abc…</code></td></tr>
+        <tr><th>Proof code</th><td><code th:text="${auditHash}">def…</code></td></tr>
+    </table>
+    <p class="note">
+        The proof code is the latest seal on our tamper-proof record of this request. Keep it: if anyone ever changed
+        that record, it would no longer match.
+    </p>
+</div>
+</body>
+</html>

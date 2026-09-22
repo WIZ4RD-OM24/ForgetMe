@@ -10,9 +10,9 @@
 - **Step 2:** once confirmed, ForgetMe contacts every part of the company that holds their data, in the right order, keeps retrying the ones that fail, and finishes when everyone has reported back.
 - **Step 3:** every step is written in a diary nobody can secretly edit; a finished request gets a receipt (certificate); ForgetMe forgets the email once a request is over; the admin is emailed when a deadline gets close.
 - **Step 4:** a plug-in lets any app join ForgetMe with about 5 lines, and **one command** starts a pretend company of four systems. We deleted "Alice" from all four in 48 seconds.
-- **Step 5:** an admin web page, limits that stop misuse, separate production settings, API documentation, automatic testing on GitHub, and everything needed to put it on a server.
+- **Step 5:** web pages for both sides (the person asking, and the admin), limits that stop misuse, separate production settings, API documentation, automatic testing on GitHub, and everything needed to put it on a server.
 
-**All 29 automatic checks pass.**
+**All 30 automatic checks pass.**
 **The code is on GitHub** at https://github.com/WIZ4RD-OM24/ForgetMe. It's private for now, so only you can see it. Make it public when you want to show it on your resume.
 **Next:** put it online. You'll need a server (free on Oracle Cloud, or about $5 a month elsewhere). The steps are in the [phase 5 guide](docs/phase-5.md#putting-it-on-a-server-your-step), and I can walk you through them.
 
@@ -70,6 +70,7 @@ ForgetMe is that **moving-out helper**, but for a company's computer systems. A 
 - **One command starts it all**, inside Docker: ForgetMe, the four systems, the database and the fake inbox. Then you ask to delete Alice and watch her disappear from each system in the right order, while Bob stays.
 
 ### Step 5: "Make it real"
+- **A web page for the person asking**, at the main address. Three screens: type your email → type the 6-digit code from your inbox → watch each system report in, ending with a receipt. It refreshes itself, and there's a cancel button while it's still waiting. No commands, no login: the page's address is the only thing you need to keep.
 - **An admin web page** at `/admin`: every request, how many days are left before the legal deadline, what each system did, the full history, and a **retry** button. No personal details are shown, only request IDs.
 - **Limits that stop misuse:** one internet address can only file so many requests an hour, and one email address can only be targeted 3 times a day, so nobody can use ForgetMe to flood someone's inbox.
 - **Production settings:** a separate mode where nothing has a default password or key. If a secret is missing, the app refuses to start rather than quietly using a public one. Waiting times become realistic too: a day to change your mind, retries spread over hours.
@@ -121,7 +122,9 @@ docker compose down -v
 ```powershell
 docker compose --profile demo up --build
 ```
-Then ask to delete alice@example.com and watch her disappear from the four systems. While it runs, open **http://localhost:8080/admin** (username `admin`, password `admin`) to watch it from the admin page.
+Then open **http://localhost:8080/**, type `alice@example.com`, get the code from the fake inbox at **http://localhost:8025**, and watch Alice disappear from the four systems. The admin's view of the same thing is at **http://localhost:8080/admin** (username `admin`, password `admin`).
+
+*If port 8080 is already in use, start it with `$env:FORGETME_PORT = "8090"` in front of the compose command, and use 8090 in the addresses.*
 
 **Or run just ForgetMe** (in PowerShell, inside the project folder):
 ```powershell

@@ -38,8 +38,9 @@ class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST,
                                 "/api/requests", "/api/requests/*/verify", "/api/requests/*/cancel",
-                                "/api/callbacks/*").permitAll()
-                        .requestMatchers("/error", "/admin.css").permitAll() // or every 4xx on a public endpoint turns into 401
+                                "/api/callbacks/*", "/", "/r/*/confirm", "/r/*/cancel").permitAll()
+                        .requestMatchers("/", "/r/*").permitAll() // the pages for the person asking to be deleted
+                        .requestMatchers("/error", "/style.css").permitAll() // or every 4xx on a public endpoint turns into 401
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() // API docs are public
                         .anyRequest().hasRole("ADMIN"))
                 .httpBasic(Customizer.withDefaults())

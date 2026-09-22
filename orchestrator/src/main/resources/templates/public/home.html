@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Delete my data</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="narrow">
+<h1>Delete my data</h1>
+<p class="sub">
+    Ask us to delete everything linked to your email address. We'll send you a 6-digit code to confirm it's really you,
+    then remove your data from every system that holds it and show you exactly what each one did.
+</p>
+
+<p class="error" th:if="${error}" th:text="${error}">something went wrong</p>
+
+<form method="post" action="/">
+    <label for="email">Your email address</label>
+    <input id="email" name="email" type="email" required autofocus placeholder="you@example.com" th:value="${email}">
+    <button type="submit">Send me a code</button>
+</form>
+
+<p class="note" th:if="${inboxUrl}">
+    This is a demo, so no real email is sent. Your code lands in
+    <a th:href="${inboxUrl}" target="_blank">the demo inbox</a>. Try <code>alice@example.com</code>.
+</p>
+</body>
+</html>

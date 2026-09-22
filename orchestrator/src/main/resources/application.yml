@@ -31,3 +31,4 @@ forgetme:
   tick: PT5S                      # how often the dispatcher looks for work
   filings-per-hour: 20            # how many requests one IP address may file per hour
   allowed-email-domains: ""       # empty means any address; a public demo should limit this, e.g. example.com
+  demo-inbox-url: ""              # set on a demo to show visitors where their code landed (Mailpit's web page)

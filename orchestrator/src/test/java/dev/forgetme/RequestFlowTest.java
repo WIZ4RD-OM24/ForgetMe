@@ -15,6 +15,7 @@ import static org.springframework.http.HttpMethod.POST;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -271,6 +272,26 @@ class RequestFlowTest {
     }
 
     @Test
+    void anyoneCanAskConfirmAndWatchFromTheWebPages() {
+        assertTrue(page("/", false).getBody().contains("Delete my data"));
+
+        String location = redirectOf(form("/", "email=olive@example.com"));
+        assertTrue(location.startsWith("/r/"), "sent to its own status page");
+        String id = location.substring(3);
+        assertTrue(page(location, false).getBody().contains("Enter your code"), "asks for the code");
+
+        assertEquals("/r/" + id + "?wrong", redirectOf(form(location + "/confirm", "code=000001")));
+        assertTrue(page(location + "?wrong", false).getBody().contains("isn't right"));
+
+        form(location + "/confirm", "code=" + codeIn(sentEmail()));
+        assertTrue(page(location, false).getBody().contains("Confirmed"), "now waiting for the cooling-off");
+
+        form(location + "/cancel", null);
+        assertTrue(page(location, false).getBody().contains("Cancelled"));
+        assertEquals("CANCELLED", status(id));
+    }
+
+    @Test
     void adminPageListsRequestsAndIsPrivate() {
         String id = fileAndVerify("nina@example.com");
         assertEquals(401, page("/admin", false).getStatusCode().value());
@@ -415,6 +436,20 @@ class RequestFlowTest {
         return http.get().uri("http://localhost:" + port + path)
                 .headers(h -> { if (asAdmin) h.setBasicAuth("admin", "admin"); })
                 .retrieve().toEntity(String.class);
+    }
+
+    /** Where a redirect points, as a path: Tomcat sends the Location header as a full URL. */
+    private String redirectOf(ResponseEntity<Void> response) {
+        return URI.create(response.getHeaders().getFirst("Location")).getPath()
+                + (URI.create(response.getHeaders().getFirst("Location")).getQuery() == null ? ""
+                : "?" + URI.create(response.getHeaders().getFirst("Location")).getQuery());
+    }
+
+    /** Submits one of the public pages' forms, like a browser would. */
+    private ResponseEntity<Void> form(String path, String formBody) {
+        RestClient.RequestBodySpec spec = http.post().uri("http://localhost:" + port + path);
+        if (formBody != null) spec.contentType(MediaType.APPLICATION_FORM_URLENCODED).body(formBody);
+        return spec.retrieve().toBodilessEntity();
     }
 
     private ResponseEntity<Map> verifyCode(String id, String code) {

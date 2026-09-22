@@ -73,6 +73,7 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 **Done when:** `docker compose up`, file one request, and watch it clean all four services. ✅
 
 ## 🟡 M5: Ship it · [docs/phase-5.md](docs/phase-5.md)
+- [x] Public page (Thymeleaf) for the requester: ask → confirm with the emailed code → watch each system report in (self-refreshing) → receipt with fingerprint and audit hash; cancel while waiting
 - [x] Admin page (Thymeleaf): request list with deadlines and audit status, per-connector progress, full history, retry button, certificate link
 - [x] Rate limiting: per IP (`forgetme.filings-per-hour`) and 3 per email address per day
 - [x] `forgetme.allowed-email-domains` so a public demo can only email `example.com`
@@ -121,3 +122,4 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - 2026-09-22: M4 pushed to GitHub.
 - 2026-09-22: M5 built. Admin page, rate limits, allowed email domains, `prod` profile, springdoc, GitHub Actions, deployment files (Caddy + compose), k6 load test. 29 tests pass. Measured: 200 file-and-verify journeys in 3.0 s (p95 582 ms), then all 200 fanned out across 4 connectors in 30 s (~400/min, 800 jobs, 2,200 audit events). Live deployment still pending a server.
 - 2026-09-22: M5 pushed. First GitHub Actions run green: all 29 tests, including the Testcontainers ones, pass on GitHub's machines.
+- 2026-09-23: Added the requester's web pages (ask, confirm, watch, receipt), so the demo needs no commands at all. `admin.css` became `style.css`; `FORGETME_PORT` makes the demo's host port configurable; `forgetme.demo-inbox-url` points visitors at the fake inbox. 30 tests pass; all four screens clicked through in a browser.

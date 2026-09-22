@@ -33,6 +33,7 @@ Small teams handle this with a spreadsheet and hand-written SQL. Things get miss
 - ✅ **Warns the admin** by email at 7 days before the legal deadline, and again if it's missed
 - ✅ Ships a **Spring Boot starter** that turns any service into a connector in about 5 lines
 - ✅ Comes with a **demo company** (mailing list, orders, uploads, user accounts) that runs with one command
+- ✅ Has a **page for the requester** (`/`): ask, confirm with the emailed code, watch each system report in, get a receipt
 - ✅ Has an **admin page** (`/admin`): every request, each system's progress, the full history, a retry button
 - ✅ **Rate-limits** public endpoints per IP and per subject, and can restrict which email domains it accepts
 
@@ -169,6 +170,8 @@ forgetme/
 │       ├── ConnectorController    register / list connectors (admin)
 │       ├── CallbackController     signed reports from connectors
 │       ├── AuditLog               hash-chained event log: append, history, verify
+│       ├── PublicPageController   the requester's three screens (ask, confirm, watch + receipt)
+│       ├── AdminPageController    admin pages: request list and one request
 │       ├── ProofController        certificate + audit verification (admin)
 │       ├── DeadlineWatcher        timer: emails the admin at 7 days left / overdue
 │       ├── Crypto                 AES-GCM, keyed fingerprints, request signing
@@ -206,7 +209,7 @@ One Maven multi-module build: `orchestrator`, `forgetme-spring-boot-starter`, `d
 | Audit log | HMAC-SHA256 hash chain, Postgres advisory lock for appends, append-only trigger |
 | Email (dev) | Mailpit catches outgoing mail locally |
 | Connector library | Spring Boot auto-configuration, JDK `HttpClient`, virtual threads |
-| Admin UI | Thymeleaf, ~25 lines of CSS, separate filter chain with CSRF |
+| Web pages | Thymeleaf, server-rendered, ~40 lines of CSS, no JavaScript; admin pages on their own filter chain with CSRF |
 | API docs | springdoc OpenAPI at `/swagger-ui.html` |
 | CI | GitHub Actions: `./mvnw -B verify` on every push |
 | Production | `prod` profile (no default secrets), Caddy for automatic HTTPS |
@@ -245,6 +248,8 @@ audit_event     (id bigserial, request_id, event, detail, created_at, prev_hash,
 | `GET` | `/api/audit/verify` | admin | Re-check the whole audit hash chain | ✅ |
 
 Verify responses: `200` code correct (request is now `WAITING`), `400` wrong code (says how many attempts are left), `410` expired or out of attempts, `409` request isn't awaiting a code.
+
+Pages: `/` (ask), `/r/{id}` (confirm → watch → receipt, refreshes itself while work is in progress), `/admin` and `/admin/requests/{id}` (admin), `/swagger-ui.html` (API docs).
 
 ### A connector in 5 lines: the starter
 
@@ -300,6 +305,8 @@ Handlers must be idempotent: jobs are delivered at least once. If your app uses 
 | Signing code duplicated in the starter, pinned by a shared known-answer test | The starter stays dependency-free of the orchestrator; the test catches drift | A third component needs it (extract a protocol module) |
 | Connectors may bring their own secret | Scripted setup (the demo, infrastructure-as-code); generated is still the default | Never |
 | One demo app, four Spring profiles, in-memory data | One small class per system; the demo exists to show ForgetMe, not storage (MinIO dropped) | Never |
+| Server-rendered pages, no SPA | Two templates and ~40 lines of CSS cover the whole visitor journey; a JavaScript app would add a build step and show nothing more | The UI needs real interactivity |
+| One page for confirm → watch → receipt, refreshed with `<meta refresh>` | It's one thing to the requester, and the address is the only thing they must keep | You want a live progress bar (server-sent events) |
 | Separate security filter chain for `/admin/**` | Browser forms need CSRF protection and a session; the stateless JSON API neither needs nor wants them | Never |
 | Rate limits counted in memory, per IP | No extra infrastructure; each instance counts on its own | Running several instances (move to Redis) |
 | A per-subject limit as well as per-IP | The IP limit alone doesn't stop a botnet filling one person's inbox with confirmation codes | Never |
@@ -332,7 +339,9 @@ git clone https://github.com/WIZ4RD-OM24/ForgetMe.git && cd ForgetMe
 docker compose --profile demo up --build
 ```
 
-This builds everything and starts ForgetMe, the four demo systems, Postgres and Mailpit. A setup step then registers the systems (wait for `Demo ready`). If you've used this checkout before, `docker compose down -v` first gives you a clean database.
+This builds everything and starts ForgetMe, the four demo systems, Postgres and Mailpit. A setup step then registers the systems (wait for `Demo ready`). If you've used this checkout before, `docker compose down -v` first gives you a clean database. If something else already uses port 8080, set `FORGETME_PORT=8090` (any free port) and use that in the URLs below.
+
+Then open **http://localhost:8080/** and delete `alice@example.com` from the page: it emails a code (read it at http://localhost:8025), you confirm, and the page shows each system reporting in, ending with a receipt. Or do the same over the API:
 
 ```bash
 # Delete Alice. Get the code from http://localhost:8025
@@ -413,7 +422,7 @@ The `prod` profile refuses to start without real secrets, waits a day before del
 
 - Legal advice or compliance certification
 - Discovering where personal data lives (you register connectors; ForgetMe doesn't scan)
-- A rich frontend (a minimal admin page only)
+- A single-page JavaScript app (the pages are plain server-rendered HTML)
 
 ## For a CV
 

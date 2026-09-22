@@ -61,6 +61,11 @@ docker compose down -v
 docker compose --profile demo up --build
 ```
 
+If port 8080 is taken by something you can't stop, start it on another port instead and use that port everywhere below:
+```powershell
+$env:FORGETME_PORT = "8090"; docker compose --profile demo up --build
+```
+
 The first time takes a few minutes, because it builds everything inside Docker. It starts 8 containers: the database, the fake inbox, ForgetMe, the four systems, and a one-time **setup** step that registers the four systems with ForgetMe. Wait for the line `Demo ready`.
 
 ### Delete Alice
