@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: forgetme
+      POSTGRES_USER: forgetme
+      POSTGRES_PASSWORD: forgetme
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  # Catches outgoing email. Inbox UI: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit
+    ports: ["1025:1025", "8025:8025"]
+
+volumes:
+  pgdata:

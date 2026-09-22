@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: forgetme
+  datasource:
+    url: jdbc:postgresql://localhost:5432/forgetme
+    username: forgetme
+    password: forgetme
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  mail:
+    host: localhost
+    port: 1025
+  security:
+    user:
+      name: admin
+      password: ${FORGETME_ADMIN_PASSWORD:admin}
+      roles: ADMIN
+
+# The defaults below are for local development only.
+# Set real values through environment variables before deploying.
+forgetme:
+  encryption-key: ${FORGETME_ENCRYPTION_KEY:GVN4VZIGVCbK0LmHu7tOJaOMk85Hp3rkcuFr7viOkgU=}
+  code-secret: ${FORGETME_CODE_SECRET:dev-only-code-secret}
+  base-url: http://localhost:8080 # where connectors send their reports
+  cooling-off: PT1M               # days in real life; one minute here so you can watch it happen
+  retry-backoff: PT10S            # wait before the first retry; doubles every time
+  callback-timeout: PT5M          # send again if a connector hasn't reported back by then
+  tick: PT5S                      # how often the dispatcher looks for work
