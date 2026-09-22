@@ -120,3 +120,4 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - 2026-09-22: M4 built. Connector starter, four-role demo app, Dockerfile, Compose `demo` profile with scripted registration, optional connector secrets. 25 tests pass (21 orchestrator + 4 starter). Full demo run: 48 s from confirmation to certificate.
 - 2026-09-22: M4 pushed to GitHub.
 - 2026-09-22: M5 built. Admin page, rate limits, allowed email domains, `prod` profile, springdoc, GitHub Actions, deployment files (Caddy + compose), k6 load test. 29 tests pass. Measured: 200 file-and-verify journeys in 3.0 s (p95 582 ms), then all 200 fanned out across 4 connectors in 30 s (~400/min, 800 jobs, 2,200 audit events). Live deployment still pending a server.
+- 2026-09-22: M5 pushed. First GitHub Actions run green: all 29 tests, including the Testcontainers ones, pass on GitHub's machines.
