@@ -93,7 +93,7 @@ Other files:
 | Test | What it checks |
 |---|---|
 | `RequestStatusTest` (3) | Allowed moves work; finished requests can't move; you can't skip verification or cancel mid-deletion |
-| `CryptoTest` (3 of 5) | Scrambling round-trips; the same email scrambles differently each time; tampering is caught; a code only matches its own request |
+| `CryptoTest` (the 3 checks about this phase) | Scrambling round-trips; the same email scrambles differently each time; tampering is caught; a code only matches its own request |
 | `RequestFlowTest` → `fileVerifyThenCancel` | Whole journey: file → email is scrambled in the database → admin-only lookup → wrong code → right code → `WAITING` → cancel → can't cancel twice |
 | `RequestFlowTest` → `fiveWrongCodesRejectTheRequest` | 4 wrong codes get a 400, the 5th gets 410, and after that even the right code is refused |
 
@@ -107,8 +107,8 @@ Run them: `.\mvnw.cmd test`
 |---|---|---|
 | The code email is sent inside the database transaction | Failures are rare, and the worst case is a code for a request that wasn't saved | Emails must never be lost or doubled (use an "outbox" table) |
 | One admin user from settings | It's a demo | Several people need to log in |
-| No rate limit | Runs on your computer | It goes on the internet (M5) |
-| Dev secrets in `application.yml` | Easy to run locally | Deploying (M5): set real ones as environment variables |
+| No rate limit | Runs on your computer | ✅ added in [phase 5](phase-5.md): per address and per email address |
+| Dev secrets in `application.yml` | Easy to run locally | ✅ handled in [phase 5](phase-5.md): production mode refuses to start without real ones |
 
 ## Things you can say in an interview
 

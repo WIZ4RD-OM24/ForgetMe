@@ -2,7 +2,7 @@
 
 **In one sentence:** other programmers can now connect their app to ForgetMe with one dependency and about 5 lines of code, and one command starts a pretend company of four systems so you can watch a real deletion happen from start to finish.
 
-**Status:** ✅ done. 25 automatic tests pass, and the full demo was run end to end.
+**Status:** ✅ done, and the full demo was run end to end.
 
 ---
 

@@ -214,7 +214,6 @@ One Maven multi-module build: `orchestrator`, `forgetme-spring-boot-starter`, `d
 | Tests | JUnit 5, Testcontainers, fake connectors on the JDK's built-in `HttpServer` |
 | Build | Maven wrapper (`mvnw`); multi-stage `Dockerfile` with a Maven cache mount |
 | Demo | Docker Compose `demo` profile: orchestrator + 4 services + one-shot setup |
-| CI (M5) | GitHub Actions |
 
 ### Data model
 

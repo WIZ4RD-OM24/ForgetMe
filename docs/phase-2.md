@@ -2,7 +2,7 @@
 
 **In one sentence:** once a request is confirmed and the cooling-off wait is over, ForgetMe sends a "please delete this person" job to every connected system, in stages, keeps retrying the ones that fail, and finishes when every system has reported back.
 
-**Status:** ✅ done. 14 automatic tests pass.
+**Status:** ✅ done.
 
 ---
 
@@ -166,7 +166,7 @@ New in this phase:
 | Tasks are sent one after another | Connectors answer in milliseconds | Slow connectors hold up the queue (send in parallel with virtual threads) |
 | Every request goes to every connector | That's the point of a deletion request | Some connectors only hold some kinds of data |
 | No way to edit or remove a connector | Demo setup is fixed | Real systems come and go |
-| Retries span ~2.5 minutes | Easy to watch on your computer | Real use: spread retries over hours (M5) |
+| Retries span ~2.5 minutes | Easy to watch on your computer | ✅ [phase 5](phase-5.md): production mode spreads them over hours |
 
 ## Things you can say in an interview
 

@@ -2,7 +2,7 @@
 
 **In one sentence:** ForgetMe now keeps a diary of every step that nobody can secretly edit, hands out a certificate when a request is finished, forgets the person's email the moment a request is over, and emails the admin when a legal deadline gets close.
 
-**Status:** ✅ done. 19 automatic tests pass.
+**Status:** ✅ done.
 
 ---
 

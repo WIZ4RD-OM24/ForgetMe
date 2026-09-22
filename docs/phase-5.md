@@ -93,7 +93,7 @@ docker compose exec postgres psql -U forgetme -tAc "select count(*), round(extra
 
 ## Putting it on a server (your step)
 
-You need a Linux server with Docker. Free or cheap options are in the [cost notes](../for-you.md): Oracle Cloud's Always Free tier, or a small rented server for about $4–6 a month.
+You need a Linux server with Docker. Two good options: Oracle Cloud's **Always Free** tier (costs nothing, but signing up is fiddly and asks for a card to prove who you are), or a small rented server for about **$4–6 a month** (Hetzner, DigitalOcean and similar). Avoid AWS, Google Cloud and Azure for this: their free tiers are easy to overshoot and they charge automatically.
 
 1. **Point a name at the server.** No need to buy a domain: if your server's address is `203.0.113.10`, then `203-0-113-10.sslip.io` already points there.
 2. **On the server:**
