@@ -66,4 +66,5 @@ public class Task {
     public Result getResult() { return result; }
     public String getNote() { return note; }
     public int getAttempts() { return attempts; }
+    public Instant getUpdatedAt() { return updatedAt; }
 }

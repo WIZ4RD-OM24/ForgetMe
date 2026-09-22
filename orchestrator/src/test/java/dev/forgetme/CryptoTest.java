@@ -46,6 +46,22 @@ class CryptoTest {
     }
 
     @Test
+    void auditLinksChangeWhenAnythingChanges() {
+        UUID id = UUID.randomUUID();
+        Instant at = Instant.parse("2026-09-22T10:00:00.123456Z");
+        byte[] prev = new byte[32];
+        byte[] link = crypto.chainHash(prev, id, "TASK_DONE", "orders: DELETED", at);
+        assertTrue(Arrays.equals(link, crypto.chainHash(prev, id, "TASK_DONE", "orders: DELETED", at)), "repeatable");
+        assertFalse(Arrays.equals(link, crypto.chainHash(prev, id, "TASK_DONE", "orders: RETAINED", at)), "detail");
+        assertFalse(Arrays.equals(link, crypto.chainHash(prev, id, "TASK_DONE", "orders: DELETED", at.plusNanos(1000))), "time");
+        assertFalse(Arrays.equals(link, crypto.chainHash(new byte[] {1}, id, "TASK_DONE", "orders: DELETED", at)), "previous link");
+        assertFalse(Arrays.equals(crypto.chainHash(prev, id, "AB", "C", at), crypto.chainHash(prev, id, "A", "BC", at)),
+                "fields can't bleed into each other");
+        assertFalse(Arrays.equals(link, new Crypto(Base64.getEncoder().encodeToString(new byte[32]), "other-key")
+                .chainHash(prev, id, "TASK_DONE", "orders: DELETED", at)), "without the key you can't rebuild the chain");
+    }
+
+    @Test
     void codeOnlyMatchesItsOwnRequest() {
         UUID id = UUID.randomUUID();
         byte[] hash = crypto.codeHash(id, "123456");

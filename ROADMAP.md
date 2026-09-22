@@ -3,7 +3,7 @@
 Each milestone ends with something you can demo. Rough pace: one weekend each.
 Each phase has a plain-English write-up in [docs/](docs/).
 
-**Now:** M2 done. **Next:** M3, proof and deadlines.
+**Now:** M3 done. **Next:** M4, the connector starter and a pretend company to demo on.
 
 ## ✅ M0: Plan
 - [x] Pick the project and a working name
@@ -44,15 +44,18 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 
 **Done when:** a request passes through 3 fake connectors, one fails twice then succeeds, and the request ends `COMPLETED`. ✅ (`deletesStageByStageAndSurvivesAFlakyConnector`)
 
-## M3: Proof and deadlines
-- [ ] Flyway `V3`: `audit_event`; every state change writes a hash-chained event
-- [ ] `GET /api/audit/verify` recomputes the chain and reports the first broken link
-- [ ] Completion certificate (JSON): per-connector result, timestamps, retained reasons
-- [ ] After completion: erase stored identifiers, keep salted `subject_hash`
-- [ ] Deadline watcher: warn at 7 days left, alert when overdue
-- [ ] Test: tamper with one audit row and check the verify endpoint catches it
+## ✅ M3: Proof and deadlines · [docs/phase-3.md](docs/phase-3.md)
+- [x] Flyway `V3`: `audit_event`; every state change writes a hash-chained event (via `AuditLog.move`)
+- [x] Chain uses HMAC with a server key, length-prefixed fields, microsecond timestamps; appends serialized with an advisory lock
+- [x] Append-only trigger on `audit_event`
+- [x] `GET /api/audit/verify` recomputes the chain and reports the first broken link
+- [x] Completion certificate (JSON): per-connector result and note, timestamps, on-time flag, full history, anchoring `auditHash`
+- [x] On *any* final state: erase the stored email, keep the keyed `subject_hash`
+- [x] Deadline watcher: emails the admin once at 7 days left and once when overdue; both audited
+- [x] Tests: edited event caught, deleted event caught, trigger refuses edits, certificate contents, email erased, one alert per level
+- [x] Checked the tests catch real bugs: disabling the "was this edited?" check makes them fail
 
-**Done when:** a finished request has a certificate, no readable PII remains, and tampering is detected.
+**Done when:** a finished request has a certificate, no readable PII remains, and tampering is detected. ✅
 
 ## M4: Connector starter + demo world
 - [ ] `forgetme-spring-boot-starter`: auto-config, `@ErasureHandler`, signature check, idempotency, async report
@@ -84,6 +87,8 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - Send emails through an outbox table, so a database rollback can never leave a user holding a code for a request that doesn't exist
 - Crypto-shredding: per-user encryption keys, so deleting the key "deletes" data inside backups
 - Replay deletions after a backup restore using `subject_hash`
+- Signed PDF certificate for people who need a document to file
+- Deadline alerts to Slack or a pager, not just email
 - Kafka as an alternative to HTTP for connectors
 
 ## Not doing
@@ -98,3 +103,4 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - 2026-09-22: M1 confirmed by hand (file → Mailpit code → verify). Started per-phase docs in `docs/`.
 - 2026-09-22: M2 built. Dispatcher with lease-based `SKIP LOCKED` claiming, signed requests and reports, exponential backoff, stages, `NEEDS_ATTENTION` + admin retry. Fake connectors use the JDK's `HttpServer` instead of WireMock. Task statuses simplified to `PENDING / SENT / DONE / FAILED`, with `RETAINED` as a result rather than a status. 14 tests pass.
 - 2026-09-22: Pushed to GitHub as a private repo: https://github.com/WIZ4RD-OM24/ForgetMe
+- 2026-09-22: M3 built. HMAC hash-chained audit log with an append-only trigger and a verify endpoint; certificates anchored by the latest audit hash; email erased on every final state (not just `COMPLETED`); deadline alerts emailed to the admin. `code-secret` renamed to `hash-secret`, now used for all keyed fingerprints. 19 tests pass.

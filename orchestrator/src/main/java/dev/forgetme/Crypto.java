@@ -9,6 +9,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
@@ -27,14 +28,14 @@ public class Crypto {
 
     private final SecureRandom random = new SecureRandom();
     private final SecretKeySpec aesKey;
-    private final byte[] codeKey;
+    private final byte[] hashKey; // for every keyed fingerprint: codes, subjects, audit chain
 
     public Crypto(@Value("${forgetme.encryption-key}") String encryptionKey,
-                  @Value("${forgetme.code-secret}") String codeSecret) {
+                  @Value("${forgetme.hash-secret}") String hashSecret) {
         byte[] key = Base64.getDecoder().decode(encryptionKey);
         if (key.length != 32) throw new IllegalArgumentException("forgetme.encryption-key must be 32 bytes, base64-encoded");
         aesKey = new SecretKeySpec(key, "AES");
-        codeKey = codeSecret.getBytes(UTF_8);
+        hashKey = hashSecret.getBytes(UTF_8);
     }
 
     /** AES-256-GCM. Output is the random IV followed by ciphertext + auth tag. */
@@ -74,11 +75,38 @@ public class Crypto {
 
     /** Keyed hash, bound to the request, so a leaked database can't be brute-forced offline. */
     public byte[] codeHash(UUID requestId, String code) {
-        return hmac(codeKey, requestId + ":" + code);
+        return hmac(hashKey, requestId + ":" + code);
     }
 
     public boolean codeMatches(byte[] storedHash, UUID requestId, String code) {
         return storedHash != null && MessageDigest.isEqual(storedHash, codeHash(requestId, code));
+    }
+
+    /**
+     * Fingerprint of a person's email that outlives the erased email: whoever holds the key can later check
+     * "was this address deleted?", but nobody can turn it back into the address.
+     */
+    public byte[] subjectHash(String email) {
+        return hmac(hashKey, "subject:" + email);
+    }
+
+    /**
+     * One link of the audit chain: a keyed hash over the previous link and this event's fields. Each field goes in
+     * with its length first, so ("AB", "C") and ("A", "BC") can't produce the same hash.
+     */
+    public byte[] chainHash(byte[] prevHash, UUID requestId, String event, String detail, Instant at) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(hashKey, "HmacSHA256"));
+            for (byte[] field : List.of("audit".getBytes(UTF_8), prevHash, requestId.toString().getBytes(UTF_8),
+                    event.getBytes(UTF_8), (detail == null ? "" : detail).getBytes(UTF_8), at.toString().getBytes(UTF_8))) {
+                mac.update(ByteBuffer.allocate(4).putInt(field.length).array());
+                mac.update(field);
+            }
+            return mac.doFinal();
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Hashing failed", e);
+        }
     }
 
     /** Signs "timestamp.body" with a shared secret: the same idea as Stripe's and GitHub's webhook signatures. */

@@ -21,13 +21,15 @@ public class RequestService {
 
     private final PrivacyRequestRepository repo;
     private final Crypto crypto;
+    private final AuditLog audit;
     private final JavaMailSender mail;
     private final Duration coolingOff;
 
-    public RequestService(PrivacyRequestRepository repo, Crypto crypto, JavaMailSender mail,
+    public RequestService(PrivacyRequestRepository repo, Crypto crypto, AuditLog audit, JavaMailSender mail,
                           @Value("${forgetme.cooling-off}") Duration coolingOff) {
         this.repo = repo;
         this.crypto = crypto;
+        this.audit = audit;
         this.mail = mail;
         this.coolingOff = coolingOff;
     }
@@ -38,8 +40,10 @@ public class RequestService {
         UUID id = UUID.randomUUID();
         String code = crypto.newCode();
         Instant now = Instant.now();
-        PrivacyRequest request = repo.save(new PrivacyRequest(id, crypto.encrypt(normalized),
-                crypto.codeHash(id, code), now, now.plus(CODE_TTL), now.plus(DEADLINE)));
+        // saveAndFlush: the audit row below points at this one, so it must be in the database first
+        PrivacyRequest request = repo.saveAndFlush(new PrivacyRequest(id, crypto.encrypt(normalized),
+                crypto.subjectHash(normalized), crypto.codeHash(id, code), now, now.plus(CODE_TTL), now.plus(DEADLINE)));
+        audit.record(id, RequestStatus.RECEIVED.name(), "request filed, confirmation code emailed");
 
         SimpleMailMessage msg = new SimpleMailMessage();
         msg.setFrom("no-reply@forgetme.local");
@@ -70,12 +74,17 @@ public class RequestService {
             throw new RequestStatus.IllegalTransition(request.getStatus(), RequestStatus.WAITING);
         }
         if (Instant.now().isAfter(request.getCodeExpiresAt())) {
-            request.moveTo(RequestStatus.REJECTED);
+            audit.move(request, RequestStatus.REJECTED, "code expired");
         } else if (crypto.codeMatches(request.getCodeHash(), id, code)) {
-            request.verified(Instant.now().plus(coolingOff));
+            Instant runAfter = Instant.now().plus(coolingOff);
+            audit.move(request, RequestStatus.WAITING, "code confirmed, deletion starts after " + runAfter);
+            request.coolOffUntil(runAfter);
         } else {
             request.wrongCode();
-            if (request.getCodeAttempts() >= MAX_CODE_ATTEMPTS) request.moveTo(RequestStatus.REJECTED);
+            audit.record(id, "WRONG_CODE", "attempt " + request.getCodeAttempts() + " of " + MAX_CODE_ATTEMPTS);
+            if (request.getCodeAttempts() >= MAX_CODE_ATTEMPTS) {
+                audit.move(request, RequestStatus.REJECTED, "too many wrong codes");
+            }
         }
         return request;
     }
@@ -83,7 +92,7 @@ public class RequestService {
     @Transactional
     public PrivacyRequest cancel(UUID id) {
         PrivacyRequest request = findLocked(id);
-        request.moveTo(RequestStatus.CANCELLED);
+        audit.move(request, RequestStatus.CANCELLED, "cancelled by the requester");
         return request;
     }
 

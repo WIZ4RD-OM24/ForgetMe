@@ -4,9 +4,9 @@
 
 A self-hosted orchestrator for "delete my data" requests (GDPR Art. 17, India's DPDP Act, CCPA), built with Spring Boot.
 
-**Status:** 🟡 Milestones 1–2 done (14/14 tests passing). Requests are verified, then fanned out to every registered system stage by stage, with signed messages, retries and an admin retry button. Proof and deadlines come in M3. See [ROADMAP.md](ROADMAP.md).
+**Status:** 🟡 Milestones 1–3 done (19/19 tests passing). Requests are verified, fanned out to every registered system stage by stage with signed messages and retries, recorded in a tamper-evident audit log, and closed with a certificate. The orchestrator erases its own copy of the email when a request finishes. The connector starter and demo services come in M4. See [ROADMAP.md](ROADMAP.md).
 
-New here or not a developer? Start with [for-you.md](for-you.md). How each phase works, in plain words: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md).
+New here or not a developer? Start with [for-you.md](for-you.md). How each phase works, in plain words: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md).
 
 ---
 
@@ -23,9 +23,10 @@ Small teams handle this with a spreadsheet and hand-written SQL. Things get miss
 - ✅ Waits a **cooling-off period** so the user can cancel
 - ✅ **Fans out** to every registered system (a *connector*) in a safe order
 - ✅ **Retries** connectors that fail or go silent, and escalates to a human when retries run out
-- ⬜ Records every step in a **tamper-evident audit log**
-- ⬜ Issues a **completion certificate** listing what each system did
-- ⬜ **Deletes its own copy** of the user's identifiers when done, keeping only a salted hash
+- ✅ Records every step in a **tamper-evident audit log** (HMAC hash chain + append-only trigger)
+- ✅ Issues a **completion certificate** listing what each system did, pinned to the audit log
+- ✅ **Deletes its own copy** of the email when a request finishes, keeping only a keyed fingerprint
+- ✅ **Warns the admin** by email at 7 days before the legal deadline, and again if it's missed
 - ⬜ Ships a **Spring Boot starter** that turns any service into a connector in about 5 lines
 
 ## How it works
@@ -36,14 +37,14 @@ flowchart LR
     subgraph Fan-out in stages
       S1["Stage 1: stop processing<br/>(unsubscribe, disable login)"] --> S2["Stage 2: downstream, in parallel<br/>(orders, uploads, search, analytics)"] --> S3["Stage 3: primary user store"]
     end
-    S3 --> P["Purge own PII<br/>(keep salted hash)"] --> R[Certificate + audit log]
+    S3 --> P["Erase own copy of the email<br/>(keep keyed fingerprint)"] --> R[Certificate + audit log]
 ```
 
 **Why stages?** The primary user record is deleted *last*. Until every downstream system is done, the orchestrator still needs the user's identifiers (email, phone, payment customer ID) to find their data. Stages are just numbers on connectors: every connector with the lowest number goes first, in parallel; the next number starts only when all of those have reported back.
 
 ### Request lifecycle
 
-Enforced by `RequestStatus.moveTo()`: any move not drawn here throws.
+Enforced by `RequestStatus.moveTo()`: any move not drawn here throws. Every move goes through `AuditLog.move()`, so each one is also written to the audit log. Reaching a final state (`COMPLETED`, `CANCELLED`, `REJECTED`) erases the stored email.
 
 ```mermaid
 stateDiagram-v2
@@ -109,7 +110,19 @@ POST {callbackUrl}
 
 Answers: `204` accepted · `401` bad or older-than-5-minutes signature · `400` unreadable · `404` unknown task.
 
-Two rules for connectors: **be idempotent** (the same `taskId` can arrive more than once), and **report within `callback-timeout`** (5 min by default), or the job is sent again.
+Three rules for connectors: **be idempotent** (the same `taskId` can arrive more than once), **report within `callback-timeout`** (5 min by default) or the job is sent again, and **keep personal data out of `note`**, because notes are copied into the permanent audit log.
+
+### Audit log and certificate
+
+Every event (`RECEIVED`, `WRONG_CODE`, `WAITING`, `RUNNING`, `STAGE_STARTED`, `TASK_DONE`, `TASK_FAILED`, `NEEDS_ATTENTION`, `COMPLETED`, `DEADLINE_WARNING`, …) is appended to `audit_event` with
+
+```
+hash = HMAC-SHA256(hash-secret, "audit" ‖ prev_hash ‖ request_id ‖ event ‖ detail ‖ created_at)   (each field length-prefixed)
+```
+
+- A trigger rejects `UPDATE` and `DELETE` on the table.
+- `GET /api/audit/verify` recomputes the chain from the first event and returns `{intact, eventsChecked, firstBrokenEventId}`.
+- `GET /api/requests/{id}/certificate` (only when `COMPLETED`) returns the subject fingerprint (never the email), received/due/completed times, `onTime`, each system's result and note, the request's full history, and `auditHash`, the chain's latest link at issue time. Holding that hash anchors the log outside the database.
 
 ## Architecture
 
@@ -127,7 +140,10 @@ forgetme/
 │       ├── Task, Connector        JPA entities
 │       ├── ConnectorController    register / list connectors (admin)
 │       ├── CallbackController     signed reports from connectors
-│       ├── Crypto                 AES-GCM, code hashing, request signing
+│       ├── AuditLog               hash-chained event log: append, history, verify
+│       ├── ProofController        certificate + audit verification (admin)
+│       ├── DeadlineWatcher        timer: emails the admin at 7 days left / overdue
+│       ├── Crypto                 AES-GCM, keyed fingerprints, request signing
 │       └── SecurityConfig         public vs admin endpoints
 ├── forgetme-spring-boot-starter/  (M4) library services add to become connectors
 └── demo/                          (M4) users, orders, uploads, mailing-stub services
@@ -147,6 +163,7 @@ One Maven multi-module build. Modules are added when they get code.
 | Service-to-service auth | HMAC-SHA256 over timestamp + body, per-connector secret |
 | Admin auth | Spring Security, HTTP Basic, single admin user |
 | PII and secrets at rest | AES-256-GCM (JDK `javax.crypto`) |
+| Audit log | HMAC-SHA256 hash chain, Postgres advisory lock for appends, append-only trigger |
 | Email (dev) | Mailpit catches outgoing mail locally |
 | Tests | JUnit 5, Testcontainers, fake connectors on the JDK's built-in `HttpServer` |
 | Build | Maven wrapper (`mvnw`) |
@@ -154,19 +171,16 @@ One Maven multi-module build. Modules are added when they get code.
 
 ### Data model
 
-Built so far:
 ```
-privacy_request (id, status, email_enc, code_hash, code_expires_at, code_attempts,
-                 received_at, due_at, run_after)
+privacy_request (id, status, email_enc (null once finished), subject_hash, code_hash,
+                 code_expires_at, code_attempts, received_at, due_at, run_after,
+                 closed_at, deadline_alert)
 connector       (id, name unique, endpoint_url, secret_enc, stage, created_at)
 task            (id, request_id, connector_id, stage, status, result, note, attempts,
                  next_attempt_at, updated_at)       -- unique(request_id, connector_id)
                                                     -- partial index on next_attempt_at for open tasks
-```
-Planned:
-```
-audit_event (id, request_id, event, payload, prev_hash, hash)    -- M3
-privacy_request.subject_hash                                     -- M3
+audit_event     (id bigserial, request_id, event, detail, created_at, prev_hash, hash)
+                                                    -- append-only (trigger)
 ```
 
 ### API
@@ -181,8 +195,8 @@ privacy_request.subject_hash                                     -- M3
 | `POST` | `/api/connectors` | admin | Register a connector (returns its secret once) | ✅ |
 | `GET` | `/api/connectors` | admin | List connectors | ✅ |
 | `POST` | `/api/callbacks/{taskId}` | connector (signed) | Report a result | ✅ |
-| `GET` | `/api/requests/{id}/certificate` | admin | Completion certificate | M3 |
-| `GET` | `/api/audit/verify` | admin | Re-check the audit hash chain | M3 |
+| `GET` | `/api/requests/{id}/certificate` | admin | Completion certificate (409 until `COMPLETED`) | ✅ |
+| `GET` | `/api/audit/verify` | admin | Re-check the whole audit hash chain | ✅ |
 
 Verify responses: `200` code correct (request is now `WAITING`), `400` wrong code (says how many attempts are left), `410` expired or out of attempts, `409` request isn't awaiting a code.
 
@@ -217,19 +231,26 @@ The starter will handle signature checks, idempotency and the report.
 | Code stored as HMAC(server key, request ID + code) | A leaked database can't be brute-forced offline, and a hash is useless for any other request | Never |
 | Forward-only saga, no rollback | A deletion can't be undone; failures retry or escalate | Never |
 | Delete the primary record last | The orchestrator needs identifiers to reach downstream data | Never |
-| Hash-chained audit log (M3) | Tamper-evident in about 20 lines | External notarization is required |
-| Purge PII after completion, keep a salted hash (M3) | The privacy tool shouldn't itself be a PII store; the hash allows re-applying deletions after a backup restore | Never |
+| Hash-chained audit log with HMAC, not plain SHA-256 | Tamper-evident, and someone with database access alone can't recompute the chain after an edit | External notarization is required |
+| Append-only trigger *and* a hash chain | The trigger stops casual edits; the chain catches anyone who disables it | Never |
+| Certificate carries the chain's latest hash | Anchors the log outside the database, even against someone holding the key | Never |
+| Appends serialized with a Postgres advisory lock | Two concurrent appends could otherwise link to the same predecessor and fork the chain | Audit volume outgrows one lock (per-request chains) |
+| Timestamps truncated to microseconds before hashing | Postgres stores microseconds; hashing more precision would make every re-verification fail | Never |
+| Fields length-prefixed inside the hash | `("AB","C")` and `("A","BC")` can't collide | Never |
+| Erase the email on every final state, keep an HMAC fingerprint | The privacy tool shouldn't itself be a PII store; the fingerprint proves who was deleted and allows re-applying deletions after a backup restore | Never |
+| Audit details capped at 500 chars | A long connector note must never make a report fail and loop forever | Never |
 
 ## Security
 
 - A 6-digit one-time code is emailed before anything runs. It's stored only as a keyed hash, expires in 24 hours, is single-use, and 5 wrong attempts reject the request
-- Emails and connector secrets are encrypted at rest with AES-256-GCM (random IV per value, tamper-detecting)
+- Emails and connector secrets are encrypted at rest with AES-256-GCM (random IV per value, tamper-detecting). The email is erased as soon as a request finishes; only a keyed fingerprint remains
+- Every event is written to an append-only, HMAC-chained audit log that never contains personal data; deadline alerts to the admin carry only the request ID
 - Every orchestrator ↔ connector message is HMAC-SHA256 signed over timestamp + body with a per-connector secret. Messages older than 5 minutes are rejected; a repeat inside that window is harmless because duplicate reports are ignored
 - API responses never include the email address
 - Request IDs are random UUIDs; everything except file/verify/cancel and signed callbacks requires admin login
-- Coming: hash-chained audit log (M3), rate limiting (M5)
+- Coming: rate limiting (M5)
 
-**Known gaps (until M5):** the public endpoint has no rate limit, so it could be used to send confirmation emails to arbitrary addresses. Connector URLs are admin-entered and not restricted, so an admin could point one at an internal address. Secrets have dev defaults in `application.yml` and must be overridden with `FORGETME_ENCRYPTION_KEY`, `FORGETME_CODE_SECRET` and `FORGETME_ADMIN_PASSWORD` before deploying.
+**Known gaps (until M5):** the public endpoint has no rate limit, so it could be used to send confirmation emails to arbitrary addresses. Connector URLs are admin-entered and not restricted, so an admin could point one at an internal address. Secrets have dev defaults in `application.yml` and must be overridden with `FORGETME_ENCRYPTION_KEY`, `FORGETME_HASH_SECRET` and `FORGETME_ADMIN_PASSWORD` before deploying.
 
 ## Getting started
 
@@ -253,10 +274,14 @@ curl -s -X POST localhost:8080/api/requests/<id>/verify -H 'Content-Type: applic
 
 # 3. After the 1-minute cooling-off, watch the app log and the admin view
 curl -s -u admin:admin localhost:8080/api/requests/<id>
-```
-Nothing listens on port 9999, so you'll see the retries in the log and the request end in `NEEDS_ATTENTION` after about 2.5 minutes. Real demo connectors arrive in M4.
 
-Dev timings live in `application.yml`: `cooling-off` (1 min), `retry-backoff` (10 s, doubling), `callback-timeout` (5 min), `tick` (5 s).
+# 4. Check the audit chain; get the certificate once a request is COMPLETED
+curl -s -u admin:admin localhost:8080/api/audit/verify
+curl -s -u admin:admin localhost:8080/api/requests/<id>/certificate
+```
+Nothing listens on port 9999, so you'll see the retries in the log and the request end in `NEEDS_ATTENTION` after about 2.5 minutes. With no connectors registered, a request completes straight after cooling-off, which is the quickest way to see a certificate. Real demo connectors arrive in M4.
+
+Dev settings live in `application.yml`: `cooling-off` (1 min), `retry-backoff` (10 s, doubling), `callback-timeout` (5 min), `tick` (5 s), `admin-email` (deadline alerts; lands in Mailpit).
 
 Run the tests:
 ```bash

@@ -22,7 +22,8 @@ spring:
 # Set real values through environment variables before deploying.
 forgetme:
   encryption-key: ${FORGETME_ENCRYPTION_KEY:GVN4VZIGVCbK0LmHu7tOJaOMk85Hp3rkcuFr7viOkgU=}
-  code-secret: ${FORGETME_CODE_SECRET:dev-only-code-secret}
+  hash-secret: ${FORGETME_HASH_SECRET:dev-only-hash-secret}
+  admin-email: admin@forgetme.local # gets deadline warnings (lands in Mailpit locally)
   base-url: http://localhost:8080 # where connectors send their reports
   cooling-off: PT1M               # days in real life; one minute here so you can watch it happen
   retry-backoff: PT10S            # wait before the first retry; doubles every time

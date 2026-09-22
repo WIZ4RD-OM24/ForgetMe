@@ -1,17 +1,18 @@
 # ForgetMe, explained simply
 
 *This file explains the project in plain English. It's updated every time the project changes.*
-*For how each step works in detail (the code, the tools, the reasons), see the phase guides: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md).*
+*For how each step works in detail (the code, the tools, the reasons), see the phase guides: [phase 1](docs/phase-1.md) · [phase 2](docs/phase-2.md) · [phase 3](docs/phase-3.md).*
 
 ## Where we are right now
 
-**Steps 1 and 2 of 5 are done.**
+**Steps 1, 2 and 3 of 5 are done.**
 - **Step 1:** someone can ask to be deleted and prove it's them with an emailed code. *(Tried by hand ✅)*
 - **Step 2:** once confirmed, ForgetMe contacts every part of the company that holds their data, in the right order, keeps retrying the ones that fail, and finishes when everyone has reported back.
+- **Step 3:** every step is written in a diary nobody can secretly edit; a finished request gets a receipt (certificate); ForgetMe forgets the email once a request is over; the admin is emailed when a deadline gets close.
 
-**All 14 automatic checks pass.**
+**All 19 automatic checks pass.**
 **The code is on GitHub** at https://github.com/WIZ4RD-OM24/ForgetMe. It's private for now, so only you can see it. Make it public when you want to show it on your resume.
-**Next:** Step 3, the proof: a receipt at the end, a diary nobody can secretly edit, and deadline warnings.
+**Next:** Step 4, a pretend company (4 tiny apps) to demo on, and a plug-in so other programmers can connect their apps in about 5 lines.
 
 ---
 
@@ -27,7 +28,7 @@ ForgetMe is that **moving-out helper**, but for a company's computer systems. A 
 1. makes sure it's really them, *(Step 1 ✅)*
 2. contacts every part of the company that holds their information, *(Step 2 ✅)*
 3. keeps chasing the ones that don't answer, *(Step 2 ✅)*
-4. hands back a receipt proving everything was handled. *(Step 3)*
+4. hands back a receipt proving everything was handled. *(Step 3 ✅)*
 
 ## Why does this matter?
 
@@ -51,6 +52,12 @@ ForgetMe is that **moving-out helper**, but for a company's computer systems. A 
 - Each connector replies with one of: **deleted**, **blanked out** (anonymized), or **kept, with a reason** (like tax records).
 - When every connector has replied, the request is **completed**.
 
+### Step 3: "Prove it"
+- **A diary nobody can secretly edit.** Every step is written down. Each line carries a seal made from the line itself *and the seal before it*, like a chain. Change or remove any line and the chain visibly breaks from that point. The database also flat-out refuses edits, and the seals need a secret key, so even someone with database access can't redo them.
+- **A receipt (certificate)** when a request is finished: what every system did (deleted, blanked out or kept with a reason), when, whether it was on time, the full history, and the diary's latest seal, so the receipt and the diary can always be checked against each other.
+- **ForgetMe forgets too.** The moment a request is over (done, cancelled or rejected), ForgetMe wipes its own copy of the email. It keeps only a fingerprint that proves *who* was deleted but can't be turned back into the email.
+- **Deadline warnings.** The admin gets one email when a request has 7 days left, and one more if it goes past its deadline.
+
 ### Why the order matters
 
 The main customer account is like **your contact list**. It holds the email, phone number and IDs that the other parts need to find the right data. Delete the contact list first and you can't reach anyone else. So:
@@ -58,7 +65,7 @@ The main customer account is like **your contact list**. It holds the email, pho
 1. **First:** stop anything still happening (stop marketing emails, block login)
 2. **Then:** clean up everywhere else, all at once
 3. **Last:** delete the main account
-4. **Finally:** ForgetMe forgets too *(Step 3)*. It deletes its own copy of the customer's details and keeps only a scrambled fingerprint.
+4. **Finally:** ForgetMe forgets too *(Step 3 ✅)*. It deletes its own copy of the customer's email and keeps only a fingerprint.
 
 ## The plan, step by step
 
@@ -67,7 +74,7 @@ The main customer account is like **your contact list**. It holds the email, pho
 | 0 ✅ | The plan (these documents) |
 | 1 ✅ | Someone can ask to be deleted and confirm with an email code |
 | 2 ✅ | ForgetMe contacts every part of the company in order, and keeps retrying the ones that fail |
-| 3 | A receipt at the end, a tamper-proof diary, and warnings when a deadline is close |
+| 3 ✅ | A receipt at the end, a tamper-proof diary, and warnings when a deadline is close |
 | 4 | A pretend company (4 tiny apps) to demo on, plus a plug-in so other programmers can connect their apps in 5 lines |
 | 5 | It's live on the internet, tested, with a simple admin page and a short demo video |
 
@@ -84,7 +91,7 @@ docker compose up -d
 .\mvnw.cmd -pl orchestrator spring-boot:run
 ```
 
-Then follow the "try it" section of the phase guide you want to see: [phase 1](docs/phase-1.md) (ask and confirm) or [phase 2](docs/phase-2.md) (watch ForgetMe contact a connector and retry).
+Then follow the "try it" section of the phase guide you want to see: [phase 1](docs/phase-1.md) (ask and confirm), [phase 2](docs/phase-2.md) (watch ForgetMe contact a connector and retry) or [phase 3](docs/phase-3.md) (get a certificate, see a deadline warning, and try to tamper with the diary).
 
 To run the automatic checks:
 ```powershell
@@ -114,6 +121,12 @@ To run the automatic checks:
 | HMAC / signature | A secret stamp so nobody can fake a message or a code |
 | Encryption | Scrambling data so only someone with the key can read it |
 | Hash | A one-way fingerprint: the same input always gives the same fingerprint, but you can't work backwards |
+| Audit log | The diary of everything that happened to every request |
+| Hash chain | Each diary line's seal includes the seal before it, so one change breaks every seal after it |
+| Certificate | The receipt for a finished request |
+| Subject fingerprint | What's left of a person's email after ForgetMe forgets it: enough to prove who was deleted, useless for anything else |
+| Trigger | A tiny rule inside the database; ours refuses any edit to the diary |
+| Advisory lock | A "one at a time, please" sign the database holds, so two diary lines are never written at the same instant |
 | Row lock | Making requests for the same record wait their turn instead of all barging in at once |
 | Race condition | Two things happening at the same instant and getting each other's timing wrong |
 | Deadlock | Two workers each waiting for the other to go first, forever |
@@ -139,3 +152,4 @@ Good interview stories so far (each phase guide has a short list you can use):
 - why a wrong code must *not* cause an error (or the guess counter resets)
 - why the to-do list is a database table and not Kafka
 - how two simultaneous replies could have left a request stuck forever, and the lock that prevents it
+- how the diary catches tampering even by someone with full database access, and why the times had to be cut to microseconds to avoid false alarms

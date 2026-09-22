@@ -4,7 +4,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.springframework.http.HttpMethod.GET;
 import static org.springframework.http.HttpMethod.POST;
@@ -15,6 +18,7 @@ import java.net.InetSocketAddress;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -67,6 +71,12 @@ class RequestFlowTest {
     Dispatcher dispatcher;
 
     @Autowired
+    DeadlineWatcher deadlineWatcher;
+
+    @Autowired
+    Crypto crypto;
+
+    @Autowired
     ObjectMapper json;
 
     @LocalServerPort
@@ -77,7 +87,7 @@ class RequestFlowTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.sql("truncate task, connector, privacy_request").update();
+        jdbc.sql("truncate audit_event, task, connector, privacy_request").update();
         http = RestClient.builder()
                 .baseUrl("http://localhost:" + port + "/api")
                 .defaultStatusHandler(status -> true, (req, res) -> {}) // assert on 4xx instead of throwing
@@ -118,6 +128,7 @@ class RequestFlowTest {
 
         assertEquals("CANCELLED", call(POST, "/requests/" + id + "/cancel", null, false).getBody().get("status"));
         assertEquals(409, call(POST, "/requests/" + id + "/cancel", null, false).getStatusCode().value(), "already cancelled");
+        assertTrue(emailErased(id), "a finished request keeps no email, even a cancelled one");
     }
 
     @Test
@@ -139,6 +150,7 @@ class RequestFlowTest {
                 .param(UUID.fromString(id)).update(); // pretend 24 hours went by
         dispatcher.tick();
         assertEquals("REJECTED", status(id));
+        assertTrue(emailErased(id));
     }
 
     // ---- Phase 2: fan-out to connectors ----
@@ -238,7 +250,126 @@ class RequestFlowTest {
         assertEquals(400, rawReport(taskId, now, nonsense, Crypto.sign(secret, now, nonsense)));
     }
 
+    // ---- Phase 3: proof and deadlines ----
+
+    @Test
+    void certificateProvesWhatEachSystemDid() {
+        FakeConnector mailing = fake();
+        FakeConnector orders = fake();
+        String mailingSecret = register("mailing", mailing, 1);
+        String ordersSecret = register("orders", orders, 2);
+        String id = fileAndVerify("hana@example.com");
+
+        dispatcher.tick();
+        assertEquals(409, call(GET, "/requests/" + id + "/certificate", null, true).getStatusCode().value(),
+                "no certificate while it's still running");
+        report(mailingSecret, mailing.last(), "DELETED", null);
+        dispatcher.tick();
+        report(ordersSecret, orders.last(), "RETAINED", "invoices kept 8 years: tax law");
+        assertEquals("COMPLETED", status(id));
+
+        assertTrue(emailErased(id), "ForgetMe forgets too");
+        ResponseEntity<Map> response = call(GET, "/requests/" + id + "/certificate", null, true);
+        assertEquals(200, response.getStatusCode().value());
+        Map<?, ?> certificate = response.getBody();
+        assertEquals(true, certificate.get("onTime"));
+        assertEquals(HexFormat.of().formatHex(crypto.subjectHash("hana@example.com")), certificate.get("subjectFingerprint"));
+        assertFalse(json.writeValueAsString(certificate).contains("hana"), "no email anywhere on the certificate");
+
+        List<Map<?, ?>> systems = (List<Map<?, ?>>) certificate.get("systems");
+        assertEquals(List.of("mailing", "orders"), systems.stream().map(s -> s.get("system")).toList());
+        assertEquals("RETAINED", systems.get(1).get("result"));
+        assertEquals("invoices kept 8 years: tax law", systems.get(1).get("note"));
+
+        List<Map<?, ?>> history = (List<Map<?, ?>>) certificate.get("history");
+        assertEquals(List.of("RECEIVED", "WAITING", "RUNNING", "STAGE_STARTED", "TASK_DONE", "STAGE_STARTED", "TASK_DONE", "COMPLETED"),
+                history.stream().map(h -> h.get("event")).toList());
+        String lastHash = jdbc.sql("select encode(hash, 'hex') from audit_event order by id desc limit 1").query(String.class).single();
+        assertEquals(lastHash, certificate.get("auditHash"), "the certificate pins the audit log's latest link");
+        assertEquals(true, call(GET, "/audit/verify", null, true).getBody().get("intact"));
+    }
+
+    @Test
+    void auditLogCatchesAnEditedEvent() {
+        String id = fileAndVerify("ivan@example.com");
+        call(POST, "/requests/" + id + "/cancel", null, false);
+        assertEquals(Map.of("intact", true, "eventsChecked", 3), withoutNulls(call(GET, "/audit/verify", null, true).getBody()));
+
+        List<Long> ids = jdbc.sql("select id from audit_event order by id").query(Long.class).list();
+        assertThrows(Exception.class, () -> jdbc.sql("update audit_event set detail = 'nothing to see' where id = ?")
+                .param(ids.get(1)).update(), "the database refuses edits");
+        tamper("update audit_event set detail = 'nothing to see' where id = " + ids.get(1));
+
+        Map<?, ?> check = call(GET, "/audit/verify", null, true).getBody();
+        assertEquals(false, check.get("intact"));
+        assertEquals(ids.get(1).intValue(), ((Number) check.get("firstBrokenEventId")).intValue());
+    }
+
+    @Test
+    void auditLogCatchesADeletedEvent() {
+        String id = fileAndVerify("jade@example.com");
+        call(POST, "/requests/" + id + "/cancel", null, false);
+        List<Long> ids = jdbc.sql("select id from audit_event order by id").query(Long.class).list();
+
+        tamper("delete from audit_event where id = " + ids.get(1));
+
+        Map<?, ?> check = call(GET, "/audit/verify", null, true).getBody();
+        assertEquals(false, check.get("intact"));
+        assertEquals(ids.get(2).intValue(), ((Number) check.get("firstBrokenEventId")).intValue(),
+                "the event after the gap no longer links up");
+    }
+
+    @Test
+    void deadlineWarningsReachTheAdminOnceEach() {
+        String id = fileAndVerify("kim@example.com");
+        String cancelled = fileAndVerify("lee@example.com");
+        call(POST, "/requests/" + cancelled + "/cancel", null, false);
+        jdbc.sql("update privacy_request set due_at = now() + interval '3 days'").update(); // pretend weeks went by
+
+        deadlineWatcher.check();
+        deadlineWatcher.check();
+        List<SimpleMailMessage> alerts = adminEmails();
+        assertEquals(1, alerts.size(), "one warning, not one per check, and none for the cancelled request");
+        assertTrue(alerts.getFirst().getSubject().contains(id));
+        assertTrue(alerts.getFirst().getSubject().contains("due within 7 days"));
+
+        jdbc.sql("update privacy_request set due_at = now() - interval '1 hour'").update();
+        deadlineWatcher.check();
+        deadlineWatcher.check();
+        alerts = adminEmails();
+        assertEquals(2, alerts.size());
+        assertTrue(alerts.getLast().getSubject().contains("past its legal deadline"));
+        assertEquals(List.of("DEADLINE_WARNING", "DEADLINE_OVERDUE"),
+                jdbc.sql("select event from audit_event where event like 'DEADLINE%' order by id").query(String.class).list());
+    }
+
     // ---- helpers ----
+
+    /** Plays an attacker with full database rights: switches off the append-only guard, edits, switches it back on. */
+    private void tamper(String sql) {
+        jdbc.sql("alter table audit_event disable trigger audit_event_append_only").update();
+        try {
+            jdbc.sql(sql).update();
+        } finally {
+            jdbc.sql("alter table audit_event enable trigger audit_event_append_only").update();
+        }
+    }
+
+    private boolean emailErased(String id) {
+        return jdbc.sql("select email_enc is null from privacy_request where id = ?")
+                .param(UUID.fromString(id)).query(Boolean.class).single();
+    }
+
+    private List<SimpleMailMessage> adminEmails() {
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mail, atLeast(0)).send(captor.capture());
+        return captor.getAllValues().stream().filter(m -> List.of(m.getTo()).contains("admin@forgetme.local")).toList();
+    }
+
+    private static Map<?, ?> withoutNulls(Map<?, ?> map) {
+        return map.entrySet().stream().filter(e -> e.getValue() != null)
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
 
     private ResponseEntity<Map> call(HttpMethod method, String path, Object body, boolean asAdmin) {
         RestClient.RequestBodySpec spec = http.method(method).uri(path);
@@ -288,9 +419,10 @@ class RequestFlowTest {
         return (String) json.readValue(call.body(), Map.class).get("taskId");
     }
 
+    /** The most recent email ForgetMe sent. */
     private SimpleMailMessage sentEmail() {
         ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mail).send(captor.capture());
+        verify(mail, atLeastOnce()).send(captor.capture());
         return captor.getValue();
     }
 

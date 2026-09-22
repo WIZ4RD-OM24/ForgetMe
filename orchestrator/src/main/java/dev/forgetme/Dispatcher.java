@@ -44,6 +44,7 @@ public class Dispatcher {
     private final JdbcClient jdbc;
     private final TransactionTemplate tx;
     private final Crypto crypto;
+    private final AuditLog audit;
     private final ObjectMapper json;
     private final Duration retryBackoff;
     private final Duration callbackTimeout;
@@ -51,7 +52,7 @@ public class Dispatcher {
     private final RestClient http;
 
     public Dispatcher(PrivacyRequestRepository requests, ConnectorRepository connectors, TaskRepository tasks,
-                      JdbcClient jdbc, TransactionTemplate tx, Crypto crypto, ObjectMapper json,
+                      JdbcClient jdbc, TransactionTemplate tx, Crypto crypto, AuditLog audit, ObjectMapper json,
                       @Value("${forgetme.retry-backoff}") Duration retryBackoff,
                       @Value("${forgetme.callback-timeout}") Duration callbackTimeout,
                       @Value("${forgetme.base-url}") String baseUrl) {
@@ -61,6 +62,7 @@ public class Dispatcher {
         this.jdbc = jdbc;
         this.tx = tx;
         this.crypto = crypto;
+        this.audit = audit;
         this.json = json;
         this.retryBackoff = retryBackoff;
         this.callbackTimeout = callbackTimeout;
@@ -74,11 +76,11 @@ public class Dispatcher {
     public void tick() {
         Instant now = Instant.now();
         requests.findIdsWithExpiredCode(now).forEach(id -> withLockedRequest(id, r -> {
-            if (r.getStatus() == RequestStatus.RECEIVED) r.moveTo(RequestStatus.REJECTED);
+            if (r.getStatus() == RequestStatus.RECEIVED) audit.move(r, RequestStatus.REJECTED, "code never confirmed");
         }));
         requests.findIdsReadyToStart(now).forEach(id -> withLockedRequest(id, r -> {
             if (r.getStatus() != RequestStatus.WAITING) return; // cancelled a moment ago
-            r.moveTo(RequestStatus.RUNNING);
+            audit.move(r, RequestStatus.RUNNING, "cooling-off over");
             log.info("Request {}: cooling-off over, starting", id);
             advance(r);
         }));
@@ -95,6 +97,7 @@ public class Dispatcher {
         withLockedTask(taskId, (request, task) -> {
             if (task.getStatus() == Task.Status.DONE) return;
             task.done(result, note);
+            audit.record(request.getId(), "TASK_DONE", nameOf(task) + ": " + result + (note == null ? "" : " (" + note + ")"));
             log.info("Task {}: connector reported {}", taskId, result);
             advance(request);
         });
@@ -108,7 +111,7 @@ public class Dispatcher {
             if (r.getStatus() != RequestStatus.NEEDS_ATTENTION) {
                 throw new RequestStatus.IllegalTransition(r.getStatus(), RequestStatus.RUNNING);
             }
-            r.moveTo(RequestStatus.RUNNING);
+            audit.move(r, RequestStatus.RUNNING, "admin retry");
             tasks.findByRequestId(requestId).stream()
                     .filter(t -> t.getStatus() == Task.Status.FAILED)
                     .forEach(Task::retryNow);
@@ -176,6 +179,7 @@ public class Dispatcher {
             if (!task.isOpen()) return; // a callback finished it meanwhile
             if (task.getAttempts() >= MAX_ATTEMPTS) {
                 task.fail(error);
+                audit.record(request.getId(), "TASK_FAILED", nameOf(task) + ": no success after " + MAX_ATTEMPTS + " attempts");
                 log.warn("Task {}: out of attempts", taskId);
                 advance(request);
             } else {
@@ -193,23 +197,32 @@ public class Dispatcher {
     private void advance(PrivacyRequest request) {
         List<Task> all = tasks.findByRequestId(request.getId());
         if (all.stream().anyMatch(t -> t.getStatus() == Task.Status.FAILED)) {
-            if (request.getStatus() == RequestStatus.RUNNING) request.moveTo(RequestStatus.NEEDS_ATTENTION);
+            if (request.getStatus() == RequestStatus.RUNNING) {
+                audit.move(request, RequestStatus.NEEDS_ATTENTION, "a system ran out of attempts");
+            }
             return;
         }
         if (request.getStatus() == RequestStatus.NEEDS_ATTENTION) {
-            request.moveTo(RequestStatus.RUNNING); // a late callback fixed the last failure
+            audit.move(request, RequestStatus.RUNNING, "a late report fixed the last failure");
         }
         if (all.stream().anyMatch(t -> t.getStatus() != Task.Status.DONE)) return; // current stage still going
 
         int currentStage = all.stream().mapToInt(Task::getStage).max().orElse(0);
         Integer nextStage = connectors.findNextStage(currentStage);
         if (nextStage == null) {
-            request.moveTo(RequestStatus.COMPLETED);
+            audit.move(request, RequestStatus.COMPLETED, "every system reported back; ForgetMe's copy of the email erased");
             log.info("Request {}: completed", request.getId());
             return;
         }
-        connectors.findByStage(nextStage).forEach(c -> tasks.save(new Task(request.getId(), c.getId(), nextStage)));
+        List<Connector> stage = connectors.findByStage(nextStage);
+        stage.forEach(c -> tasks.save(new Task(request.getId(), c.getId(), nextStage)));
+        audit.record(request.getId(), "STAGE_STARTED", "stage " + nextStage + ": "
+                + String.join(", ", stage.stream().map(Connector::getName).toList()));
         log.info("Request {}: stage {} started", request.getId(), nextStage);
+    }
+
+    private String nameOf(Task task) {
+        return connectors.findById(task.getConnectorId()).map(Connector::getName).orElse("?");
     }
 
     private void withLockedRequest(UUID requestId, Consumer<PrivacyRequest> action) {

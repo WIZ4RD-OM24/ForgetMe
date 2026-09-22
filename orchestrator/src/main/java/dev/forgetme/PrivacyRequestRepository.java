@@ -2,6 +2,7 @@ package dev.forgetme;
 
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,4 +21,6 @@ public interface PrivacyRequestRepository extends JpaRepository<PrivacyRequest, 
 
     @Query("select r.id from PrivacyRequest r where r.status = dev.forgetme.RequestStatus.RECEIVED and r.codeExpiresAt < :now")
     List<UUID> findIdsWithExpiredCode(Instant now);
+
+    List<PrivacyRequest> findByStatusInAndDueAtBefore(Collection<RequestStatus> statuses, Instant before);
 }

@@ -93,7 +93,7 @@ Other files:
 | Test | What it checks |
 |---|---|
 | `RequestStatusTest` (3) | Allowed moves work; finished requests can't move; you can't skip verification or cancel mid-deletion |
-| `CryptoTest` (3 of 4) | Scrambling round-trips; the same email scrambles differently each time; tampering is caught; a code only matches its own request |
+| `CryptoTest` (3 of 5) | Scrambling round-trips; the same email scrambles differently each time; tampering is caught; a code only matches its own request |
 | `RequestFlowTest` → `fileVerifyThenCancel` | Whole journey: file → email is scrambled in the database → admin-only lookup → wrong code → right code → `WAITING` → cancel → can't cancel twice |
 | `RequestFlowTest` → `fiveWrongCodesRejectTheRequest` | 4 wrong codes get a 400, the 5th gets 410, and after that even the right code is refused |
 
