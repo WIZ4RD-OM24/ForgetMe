@@ -13,7 +13,7 @@
 - **Step 5:** web pages for both sides (the person asking, and the admin), limits that stop misuse, separate production settings, API documentation, automatic testing on GitHub, and everything needed to put it on a server.
 
 **All 30 automatic checks pass.**
-**The code is on GitHub** at https://github.com/WIZ4RD-OM24/ForgetMe. It's private for now, so only you can see it. Make it public when you want to show it on your resume.
+**The code is on GitHub** at https://github.com/WIZ4RD-OM24/ForgetMe, and it's public, so you can put the link on your resume.
 **Next:** put it online. You'll need a server (free on Oracle Cloud, or about $5 a month elsewhere). The steps are in the [phase 5 guide](docs/phase-5.md#putting-it-on-a-server-your-step), and I can walk you through them.
 
 ---
@@ -78,6 +78,22 @@ ForgetMe is that **moving-out helper**, but for a company's computer systems. A 
 - **Automatic testing:** every time code is uploaded to GitHub, all the tests run there too, and the README shows a green tick.
 - **Ready for a server:** the files needed to run it online with automatic HTTPS (the padlock in the browser).
 - **Real measured numbers** (see below) instead of guesses.
+- **A security check of the whole thing** (see below), and the four holes it found are fixed.
+
+### Is it safe?
+
+We went through it looking for holes. The good parts were already good: the code you get by email is never stored as-is, emails are locked with the same kind of encryption a bank uses, nothing personal is ever written to the diary or the logs, and every page escapes what it prints, so nobody can sneak code into it.
+
+Four things needed fixing, and they're fixed:
+
+| What was wrong | Why it mattered | Fixed by |
+|---|---|---|
+| Nothing stopped someone guessing the admin password over and over | Given enough time, a weak password falls | 10 wrong tries and that address is shut out for the hour |
+| A visitor could invent a fake "who I am" label and reset their own limit | The "so many requests an hour" limit could be walked straight past | The web server in front now overwrites that label with the real one |
+| The app ran as the computer's most powerful user inside its box | If it were ever broken into, the damage would be worse | It now runs as an ordinary user |
+| The file holding the real passwords could be committed by accident | Secrets on a public page | Git now ignores it |
+
+Two things are deliberate, not accidents: the demo's fake inbox is open to everyone (that's how a stranger reads their own code), and the admin can point ForgetMe at any address they like (an admin is trusted by definition).
 
 ### How fast is it?
 

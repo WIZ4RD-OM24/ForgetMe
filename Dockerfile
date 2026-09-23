@@ -9,8 +9,10 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -q -DskipTests package
 
 FROM eclipse-temurin:21-jre AS orchestrator
 COPY --from=build /src/orchestrator/target/orchestrator-*.jar /app.jar
+USER 1000:1000
 ENTRYPOINT ["java", "-jar", "/app.jar"]
 
 FROM eclipse-temurin:21-jre AS demo
 COPY --from=build /src/demo/target/demo-*.jar /app.jar
+USER 1000:1000
 ENTRYPOINT ["java", "-jar", "/app.jar"]

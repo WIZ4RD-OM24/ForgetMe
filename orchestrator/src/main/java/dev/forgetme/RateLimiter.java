@@ -28,9 +28,20 @@ class RateLimiter {
     }
 
     boolean allow(String key, Instant now) {
+        return record(key, now) <= limit;
+    }
+
+    /** Counts one event and says how many that key has had this hour. */
+    int record(String key, Instant now) {
         if (counts.size() > MAX_TRACKED_KEYS) counts.values().removeIf(c -> now.isAfter(c.resetAt()));
         Count count = counts.compute(key, (k, existing) ->
                 existing == null || now.isAfter(existing.resetAt()) ? new Count(now.plus(WINDOW), new AtomicInteger()) : existing);
-        return count.used().incrementAndGet() <= limit;
+        return count.used().incrementAndGet();
+    }
+
+    /** How many events this key has had this hour, without counting another. */
+    int used(String key, Instant now) {
+        Count count = counts.get(key);
+        return count == null || now.isAfter(count.resetAt()) ? 0 : count.used().get();
     }
 }

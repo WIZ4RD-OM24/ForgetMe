@@ -84,6 +84,7 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - [x] Deployment files: production compose, Caddy (automatic HTTPS), `.env.example`, server walkthrough
 - [x] k6 load test + measured numbers in the README
 - [x] Architecture diagram and CV bullet in the README
+- [x] Security pass over the whole codebase: admin login lockout, no `X-Forwarded-For` spoofing, non-root containers, `.env` git-ignored, Dependabot
 - [ ] Deploy to a free or cheap host with a live demo URL *(needs a server: Oracle Always Free or ~$5/month VPS)*
 - [ ] Short demo recording (optional; the live URL may be enough)
 
@@ -124,3 +125,4 @@ Goal: a verified request reaches every connector, in stages, and survives failur
 - 2026-09-22: M5 pushed. First GitHub Actions run green: all 29 tests, including the Testcontainers ones, pass on GitHub's machines.
 - 2026-09-23: Added the requester's web pages (ask, confirm, watch, receipt), so the demo needs no commands at all. `admin.css` became `style.css`; `FORGETME_PORT` makes the demo's host port configurable; `forgetme.demo-inbox-url` points visitors at the fake inbox. 30 tests pass; all four screens clicked through in a browser.
 - 2026-09-23: Repository made public: https://github.com/WIZ4RD-OM24/ForgetMe
+- 2026-09-23: Security pass. Fixed four real holes: admin logins could be guessed without limit, `X-Forwarded-For` could be forged past the per-IP limit (Caddy now overwrites it), containers ran as root, and `deploy/.env` wasn't git-ignored. Added Dependabot. All 30 tests pass.

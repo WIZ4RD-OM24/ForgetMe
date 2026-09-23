@@ -6,12 +6,24 @@
 	}
 
 	# What each demo system still holds: /demo/users/data, /demo/orders/data, ...
-	handle_path /demo/users/* { reverse_proxy users:8080 }
-	handle_path /demo/orders/* { reverse_proxy orders:8080 }
-	handle_path /demo/uploads/* { reverse_proxy uploads:8080 }
-	handle_path /demo/mailing/* { reverse_proxy mailing:8080 }
+	handle_path /demo/users/* {
+		reverse_proxy users:8080
+	}
+	handle_path /demo/orders/* {
+		reverse_proxy orders:8080
+	}
+	handle_path /demo/uploads/* {
+		reverse_proxy uploads:8080
+	}
+	handle_path /demo/mailing/* {
+		reverse_proxy mailing:8080
+	}
 
 	handle {
-		reverse_proxy orchestrator:8080
+		# Overwrite, don't append: Caddy adds to any X-Forwarded-For the caller sent, and ForgetMe reads the
+		# first entry. Without this line anyone could invent an address and slip past the per-address limit.
+		reverse_proxy orchestrator:8080 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 }

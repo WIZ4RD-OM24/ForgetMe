@@ -66,6 +66,34 @@ Every push runs the whole test suite on GitHub's machines (`.github/workflows/ci
 
 See below.
 
+### 8. A security pass over the whole thing
+
+Everything was read again looking for holes. What was already right:
+
+| Checked | Result |
+|---|---|
+| The emailed code | Stored only as a keyed hash, 24 h life, single use, 5 wrong tries and the request is rejected — and the counter is protected by a row lock, so parallel guesses can't beat it |
+| Personal data | Encrypted with AES-256-GCM, erased on every final state, never in the diary, never in the logs, never in an API response |
+| The web pages | Thymeleaf escapes everything; no `th:utext`, no inline JavaScript, so nothing a visitor types can become code |
+| The database | Every query is parameterised; no user text is ever glued into SQL |
+| Connector messages | Signature checked *before* the body is parsed, 5-minute freshness window, compared in constant time |
+| Admin forms | Their own filter chain with CSRF on; the JSON API is stateless, so it doesn't need it |
+
+Four real holes, all now fixed:
+
+| Hole | What an attacker could do | Fix |
+|---|---|---|
+| No limit on wrong admin logins | Guess the password for as long as they liked | `AdminLoginGuard`: 10 wrong logins from an address and it's turned away for the hour. It sits *before* Spring Security (order -200 against the security chain's -100), so a blocked address never reaches the password check |
+| `X-Forwarded-For` could be forged | Caddy **appends** the real address to whatever the caller sent, and Spring reads the **first** entry — so sending a made-up one gave you a fresh rate-limit budget on every request | One line in the Caddyfile: `header_up X-Forwarded-For {remote_host}`, which overwrites instead of appending |
+| Containers ran as root | A break-in inside the container would have full control of it | `USER 1000:1000` in both images |
+| `deploy/.env` wasn't git-ignored | The real production secrets could be committed by accident | Added `.env` to `.gitignore` |
+
+Two things look like holes and are deliberate: the demo's Mailpit inbox is open at `/mail` (that's how a stranger reads their own code — the demo only accepts `example.com` addresses, so no real inbox is involved), and an admin can register a connector pointing anywhere, including an internal address. An admin is trusted by definition; if that ever stops being true, the endpoint URL needs an allow-list.
+
+Left as known limits: the subject's email reaches connectors signed but not encrypted, so connector endpoints should be HTTPS; and rate-limit counters live in memory, so they reset on restart and each instance counts on its own.
+
+Dependabot now opens a pull request every week when a library or GitHub action has a newer version, which is how known holes in dependencies get noticed.
+
 ## The numbers (measured, not guessed)
 
 Run on this laptop, with everything (ForgetMe, the database, and the four demo systems) in Docker on the same machine.
@@ -130,8 +158,9 @@ Only `example.com` addresses are accepted in production, so nobody's real inbox 
 | `templates/public/home.html`, `status.html` | Those pages |
 | `AdminPageController` | Builds the two admin pages. Dates are formatted here so the templates stay simple |
 | `templates/admin/requests.html`, `request.html` | The two pages (Thymeleaf) |
-| `static/admin.css` | ~25 lines of styling, light and dark |
+| `static/style.css` | ~40 lines of styling, light and dark, shared by both sets of pages |
 | `RateLimiter` | Counts what each internet address does, in one-hour windows |
+| `AdminLoginGuard` | Counts wrong admin passwords per address and turns that address away after 10 in an hour |
 | `application-prod.yml` | Production settings, with no default secrets |
 | `.github/workflows/ci.yml` | Runs the tests on every push |
 | `deploy/*` | Production compose file, Caddy config, secrets template |
@@ -162,7 +191,8 @@ Only `example.com` addresses are accepted in production, so nobody's real inbox 
 | `RateLimiterTest` (2) | Allows up to the limit and then stops; counts each caller separately; forgets after an hour |
 | `RequestFlowTest` → `oneAddressCantBeFloodedWithRequests` | The 4th request for the same address in a day is refused (429), capital letters don't sneak past, other addresses are unaffected |
 | `RequestFlowTest` → `adminPageListsRequestsAndIsPrivate` | The page needs a login, lists the request, shows the audit status, and the detail page shows the status |
-| Everything from phases 1–4 | Still passing: 29 tests in total |
+| `RequestFlowTest` → `adminPageListsRequestsAndIsPrivate` | ...and after 10 wrong passwords the address gets 429 even with the right one |
+| Everything from phases 1–4 | Still passing |
 
 Checked by hand as well: all four screens clicked through in a real browser (ask → code → confirmed → receipt), the admin pages, and the production mode refusing to start without secrets. 30 tests in total.
 
@@ -181,4 +211,6 @@ Checked by hand as well: all four screens clicked through in a real browser (ask
 - "The public endpoints are rate-limited per IP and per subject; the per-subject limit exists because the IP limit alone doesn't stop someone spamming one person's inbox from a botnet."
 - "The admin UI is a separate Spring Security filter chain with CSRF enabled, because form posts from a browser need it while the stateless JSON API doesn't."
 - "The prod profile deliberately has no defaults for secrets, so a missing environment variable fails startup instead of silently using a value from the repository."
+- "The admin lockout filter is ordered -200, ahead of Spring Security's -100, so a blocked address is refused before the password is ever checked; failures are counted from an authentication failure event, so normal admin browsing never counts."
+- "Caddy appends to X-Forwarded-For and Spring's ForwardedHeaderFilter reads the first entry, so the proxy has to overwrite the header rather than append — otherwise the per-IP limit is one spoofed header away from useless."
 - "Measured with k6: 200 end-to-end request-and-confirm journeys in 3 s, p95 filing 582 ms; the dispatcher then completed all 200 across four connectors in 30 s, about 400 requests a minute."

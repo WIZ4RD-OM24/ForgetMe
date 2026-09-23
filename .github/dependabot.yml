@@ -1,0 +1,9 @@
+# Opens a pull request when a library or action has a newer version, so known holes get patched.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

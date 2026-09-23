@@ -301,6 +301,13 @@ class RequestFlowTest {
         assertTrue(list.getBody().contains(id.substring(0, 8)), "the request is listed");
         assertTrue(list.getBody().contains("Audit log intact"));
         assertTrue(page("/admin/requests/" + id, true).getBody().contains("WAITING"));
+
+        // ...and guessing the password gets you shut out, right password or not. Last in this test on purpose:
+        // it blocks this address for the rest of the hour.
+        for (int i = 0; i < AdminLoginGuard.MAX_FAILURES_PER_HOUR; i++) {
+            assertEquals(401, page("/admin", "hunter" + i).getStatusCode().value());
+        }
+        assertEquals(429, page("/admin", true).getStatusCode().value(), "locked out even with the right password");
     }
 
     // ---- Phase 3: proof and deadlines ----
@@ -433,8 +440,12 @@ class RequestFlowTest {
 
     /** The admin pages live outside /api, so these go to the server root. */
     private ResponseEntity<String> page(String path, boolean asAdmin) {
+        return page(path, asAdmin ? "admin" : null);
+    }
+
+    private ResponseEntity<String> page(String path, String password) {
         return http.get().uri("http://localhost:" + port + path)
-                .headers(h -> { if (asAdmin) h.setBasicAuth("admin", "admin"); })
+                .headers(h -> { if (password != null) h.setBasicAuth("admin", password); })
                 .retrieve().toEntity(String.class);
     }
 

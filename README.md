@@ -321,9 +321,12 @@ Handlers must be idempotent: jobs are delivered at least once. If your app uses 
 - API responses never include the email address
 - Request IDs are random UUIDs; everything except file/verify/cancel and signed callbacks requires admin login
 - Public endpoints are rate-limited: `forgetme.filings-per-hour` per IP (20 dev, 5 prod) and 3 per email address per day. `forgetme.allowed-email-domains` restricts who can be emailed at all — the public demo only accepts `example.com`
-- The admin page runs on its own filter chain with CSRF protection
+- The admin page runs on its own filter chain with CSRF protection, and 10 failed logins lock that IP out for the rest of the hour (`AdminLoginGuard`, ahead of Spring Security in the filter order)
+- Behind the reverse proxy, Caddy overwrites `X-Forwarded-For` rather than appending to it, so a caller can't invent an address and reset their own rate limit
+- Both images run as an unprivileged user; nothing but Caddy is exposed to the internet, and `.env` is git-ignored
+- Dependabot opens a weekly PR for outdated libraries and actions
 
-**Known gaps:** connector URLs are admin-entered and not restricted, so an admin could point one at an internal address. The demo's connector secrets are written in `compose.yaml` and labelled demo-only. Development secrets in `application.yml` are placeholders; the `prod` profile has no defaults and refuses to start without `FORGETME_ENCRYPTION_KEY`, `FORGETME_HASH_SECRET` and `FORGETME_ADMIN_PASSWORD`.
+**Known gaps:** connector URLs are admin-entered and not restricted, so an admin could point one at an internal address, and the subject's email travels to them signed but not encrypted, so connector endpoints should be HTTPS. Rate-limit counters are per-instance and reset on restart. The public demo deliberately exposes Mailpit at `/mail`, so any visitor can read any demo confirmation code — that is the demo, not the design. The demo's connector secrets are written in `compose.yaml` and labelled demo-only. Development secrets in `application.yml` are placeholders; the `prod` profile has no defaults and refuses to start without `FORGETME_ENCRYPTION_KEY`, `FORGETME_HASH_SECRET` and `FORGETME_ADMIN_PASSWORD`.
 
 ## Getting started
 
